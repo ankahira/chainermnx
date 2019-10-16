@@ -1,2 +1,2 @@
-# chainermnx
+# chainerMNX
 Extended ChainerMN
