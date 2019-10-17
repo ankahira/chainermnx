@@ -1,6 +1,7 @@
 import chainer
-import cupy as cp
+# import cupy as cp
 import numpy as np
+from chainermnx.functions import allreduce
 
 
 class ChannelParallelConvolution2D(chainer.links.Convolution2D):

@@ -1,4 +1,19 @@
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, Command
+import os
+
+
+class CleanCommand(Command):
+    user_options = []
+
+    def initialize_options(self):
+        self.cwd = None
+
+    def finalize_options(self):
+        self.cwd = os.getcwd()
+
+    def run(self):
+        assert os.getcwd() == self.cwd, 'Must be in package root: %s' % self.cwd
+        os.system('rm -rf ./build ./dist ./*.pyc ./*.tgz ./*.egg-info')
 
 
 setup(
@@ -15,6 +30,10 @@ setup(
          "License :: OSI Approved :: MIT License",
          "Operating System :: OS Independent",
      ],
-     install_requires=['chainer', 'numpy']
+     install_requires=['chainer', 'numpy'],
+     cmdclass={
+        'clean': CleanCommand,
+     }
+
  )
-setup()
+

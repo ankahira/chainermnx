@@ -4,7 +4,7 @@ import chainer
 from chainer import backend
 
 
-class AllReduce(chainer.Function):
+class AllReduce(chainer.Function, ABC):
     def __init__(self, comm):
         self.comm = comm
 
