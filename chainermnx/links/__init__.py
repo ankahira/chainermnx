@@ -3,5 +3,5 @@ from chainermnx.links.channel_parallel_convolution_2d import ChannelParallelConv
 from chainermnx.links.filter_parallel_convolution_2d import FilterParallelConvolution2D
 from chainermnx.links.filter_parallel_linear import FilterParallelFC
 from chainermnx.links.channel_parallel_linear import ChannelParallelFC
-
+from chainermnx.links.spatial_parallel_convulution_2d import SpatialConvolution2D
 
