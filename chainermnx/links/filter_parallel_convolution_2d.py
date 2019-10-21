@@ -1,7 +1,7 @@
 import chainer
 import chainermn
 import numpy as np
-
+import chainer.functions as F
 
 
 class FilterParallelConvolution2D(chainer.links.Convolution2D):
