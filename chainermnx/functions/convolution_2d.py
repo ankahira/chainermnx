@@ -11,7 +11,6 @@ from chainer.utils import argument
 from chainer.utils import conv
 from chainer.utils import type_check
 import chainerx
-from chainermnx.functions.halo_exchange import halo_exchange
 
 if cuda.cudnn_enabled:
     _cudnn_version = cuda.cuda.cudnn.getVersion()  # type: ignore
@@ -37,7 +36,7 @@ class Convolution2DFunction(function_node.FunctionNode):
 
     _use_ideep = False
 
-    def __init__(self, comm, halo_size, stride=1, pad=0, cover_all=False, **kwargs):
+    def __init__(self, stride=1, pad=0, cover_all=False, **kwargs):
         dilate, groups = argument.parse_kwargs(
             kwargs, ('dilate', 1), ('groups', 1),
             deterministic='deterministic argument is not supported anymore. '
@@ -48,8 +47,6 @@ class Convolution2DFunction(function_node.FunctionNode):
             'the gradient w.r.t. x is automatically decided during '
             'backpropagation.')
 
-        self.comm = comm
-        self.halo_size = halo_size
         self.sy, self.sx = _pair(stride)
         self.ph, self.pw = _pair(pad)
         self.cover_all = cover_all
@@ -173,8 +170,6 @@ class Convolution2DFunction(function_node.FunctionNode):
         else:
             x, W, b = inputs
 
-        x = halo_exchange(self.comm, x, self.halo_size, index=1)
-
         out_c, _, kh, kw = W.shape
         n, _, h, w = x.shape
 
@@ -258,9 +253,13 @@ class Convolution2DFunction(function_node.FunctionNode):
     def backward(self, indexes, grad_outputs):
         x, W = self.get_retained_inputs()
         gy, = grad_outputs
-        # if self.comm.rank == 0:
-        #     print("Shape of X is :  ", x.shape)
-        #     print("Shape of gy is : ", gy.shape)
+        with open("gradients.txt", "w") as f:
+            for i in range(gy.shape[-2]):
+                for j in range(gy.shape[-1]):
+                    print("%01.3f" % gy[0,0,i,j].array, " ", file=f, end="")
+                print("\n", file=f)
+
+
 
         ret = []
         if 0 in indexes:
@@ -431,6 +430,7 @@ class Convolution2DGradW(function_node.FunctionNode):
 
     def backward(self, indexes, grad_outputs):
         x, gy = self.get_retained_inputs()
+
         ggW, = grad_outputs
 
         ret = []
@@ -451,14 +451,144 @@ class Convolution2DGradW(function_node.FunctionNode):
         return ret
 
 
-def convolution_2d(comm, x, halo_size, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
+def convolution_2d(x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
+    """convolution_2d(x, W, b=None, stride=1, pad=0, cover_all=False, *, \
+dilate=1, groups=1)
+
+    Two-dimensional convolution function.
+
+    This is an implementation of two-dimensional convolution in ConvNets.
+    It takes three variables: the input image ``x``, the filter weight ``W``,
+    and the bias vector ``b``.
+
+    Notation: here is a notation for dimensionalities.
+
+    - :math:`n` is the batch size.
+    - :math:`c_I` and :math:`c_O` are the number of the input and output
+      channels, respectively.
+    - :math:`h_I` and :math:`w_I` are the height and width of the input image,
+      respectively.
+    - :math:`h_K` and :math:`w_K` are the height and width of the filters,
+      respectively.
+    - :math:`h_P` and :math:`w_P` are the height and width of the spatial
+      padding size, respectively.
+
+    Then the ``Convolution2D`` function computes correlations between filters
+    and patches of size :math:`(h_K, w_K)` in ``x``.
+    Note that correlation here is equivalent to the inner product between
+    expanded vectors.
+    Patches are extracted at positions shifted by multiples of ``stride`` from
+    the first position ``(-h_P, -w_P)`` for each spatial axis.
+    The right-most (or bottom-most) patches do not run over the padded spatial
+    size.
+
+    Let :math:`(s_Y, s_X)` be the stride of filter application. Then, the
+    output size :math:`(h_O, w_O)` is determined by the following equations:
+
+    .. math::
+
+       h_O &= (h_I + 2h_P - h_K) / s_Y + 1,\\\\
+       w_O &= (w_I + 2w_P - w_K) / s_X + 1.
+
+    If ``cover_all`` option is ``True``, the filter will cover the all
+    spatial locations. So, if the last stride of filter does not cover the
+    end of spatial locations, an additional stride will be applied to the end
+    part of spatial locations. In this case, the output size :math:`(h_O, w_O)`
+    is determined by the following equations:
+
+    .. math::
+
+       h_O &= (h_I + 2h_P - h_K + s_Y - 1) / s_Y + 1,\\\\
+       w_O &= (w_I + 2w_P - w_K + s_X - 1) / s_X + 1.
+
+    If the bias vector is given, then it is added to all spatial locations of
+    the output of convolution.
+
+    The output of this function can be non-deterministic when it uses cuDNN.
+    If ``chainer.configuration.config.cudnn_deterministic`` is ``True`` and
+    cuDNN version is >= v3, it forces cuDNN to use a deterministic algorithm.
+
+    Convolution links can use a feature of cuDNN called autotuning, which
+    selects the most efficient CNN algorithm for images of fixed-size,
+    can provide a significant performance boost for fixed neural nets.
+    To enable, set `chainer.using_config('autotune', True)`
+
+    When the dilation factor is greater than one, cuDNN is not used unless
+    the version is 6.0 or higher.
+
+    Args:
+        x (:class:`~chainer.Variable` or :ref:`ndarray`):
+            Input variable of shape :math:`(n, c_I, h_I, w_I)`.
+        W (:class:`~chainer.Variable` or :ref:`ndarray`):
+            Weight variable of shape :math:`(c_O, c_I, h_K, w_K)`.
+        b (None or :class:`~chainer.Variable` or :ref:`ndarray`):
+            Bias variable of length :math:`c_O` (optional).
+        stride (:class:`int` or pair of :class:`int` s):
+            Stride of filter applications. ``stride=s`` and ``stride=(s, s)``
+            are equivalent.
+        pad (:class:`int` or pair of :class:`int` s):
+            Spatial padding width for input arrays.
+            ``pad=p`` and ``pad=(p, p)`` are equivalent.
+        cover_all (:class:`bool`):
+            If ``True``, all spatial locations are convoluted into some output
+            pixels.
+        dilate (:class:`int` or pair of :class:`int` s):
+            Dilation factor of filter applications.
+            ``dilate=d`` and ``dilate=(d, d)`` are equivalent.
+        groups (:class:`int`): Number of groups of channels. If the number
+            is greater than 1, input tensor :math:`W` is divided into some
+            blocks by this value. For each tensor blocks, convolution
+            operation will be executed independently. Input channel size
+            :math:`c_I` and output channel size :math:`c_O` must be exactly
+            divisible by this value.
+
+    Returns:
+        ~chainer.Variable:
+            Output variable of shape :math:`(n, c_O, h_O, w_O)`.
+
+    .. seealso::
+
+        :class:`~chainer.links.Convolution2D` to manage the model parameters
+        ``W`` and ``b``.
+
+    .. admonition:: Example
+
+        >>> n = 10
+        >>> c_i, c_o = 3, 1
+        >>> h_i, w_i = 30, 40
+        >>> h_k, w_k = 10, 10
+        >>> h_p, w_p = 5, 5
+        >>> x = np.random.uniform(0, 1, (n, c_i, h_i, w_i)).astype(np.float32)
+        >>> x.shape
+        (10, 3, 30, 40)
+        >>> W = np.random.uniform(0, 1, (c_o, c_i, h_k, w_k)).\
+astype(np.float32)
+        >>> W.shape
+        (1, 3, 10, 10)
+        >>> b = np.random.uniform(0, 1, (c_o,)).astype(np.float32)
+        >>> b.shape
+        (1,)
+        >>> s_y, s_x = 5, 7
+        >>> y = F.convolution_2d(x, W, b, stride=(s_y, s_x), pad=(h_p, w_p))
+        >>> y.shape
+        (10, 1, 7, 6)
+        >>> h_o = int((h_i + 2 * h_p - h_k) / s_y + 1)
+        >>> w_o = int((w_i + 2 * w_p - w_k) / s_x + 1)
+        >>> y.shape == (n, c_o, h_o, w_o)
+        True
+        >>> y = F.convolution_2d(x, W, b, stride=(s_y, s_x), pad=(h_p, w_p), \
+cover_all=True)
+        >>> y.shape == (n, c_o, h_o, w_o + 1)
+        True
+
+    """
     dilate, groups = argument.parse_kwargs(
         kwargs, ('dilate', 1), ('groups', 1),
         deterministic='deterministic argument is not supported anymore. '
         'Use chainer.using_config(\'cudnn_deterministic\', value) '
         'context where value is either `True` or `False`.')
 
-    fnode = Convolution2DFunction(comm=comm, halo_size=halo_size, stride=stride, pad=pad, cover_all=cover_all, dilate=dilate,
+    fnode = Convolution2DFunction(stride, pad, cover_all, dilate=dilate,
                                   groups=groups)
     if b is None:
         args = x, W

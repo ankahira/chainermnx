@@ -27,45 +27,68 @@ class HaloExchange(FunctionNode, ABC):
             self.halo_size = (self.k_size - 1) // 2
 
     def forward(self, inputs):
-        self.retain_inputs((0,))
         x, = inputs
+        if self.comm.rank ==0:
+            with open("oringinal_x.txt", "w") as f:
+                for i in range(x.shape[-2]):
+                    for j in range(x.shape[-1]):
+                        print("% 01.3f" % x[0, 0, i, j] , file=f, end="")
+                    print("\n", file=f)
+
+
 
         # pad the top and bottom part
         if self.comm.rank == 0:
             npad = ((0, 0), (0, 0), (self.halo_size, 0), (0, 0))
             x = cp.pad(x, pad_width=npad, mode="constant")
+            with open("x_after_padding.txt", "w") as f:
+                for i in range(x.shape[-2]):
+                    for j in range(x.shape[-1]):
+                        print("% 01.3f" % x[0, 0, i, j] , file=f, end="")
+                    print("\n", file=f)
+
+
+
 
         if self.comm.rank == 3:
             npad = ((0, 0), (0, 0), (0, self.halo_size), (0, 0))
             x = cp.pad(x, pad_width=npad, mode="constant")
 
+        # Exchange the upper parts first
 
-        lower_halo_region = x[:, :, -self.halo_size:, :]
-        upper_halo_region = x[:, :, :self.halo_size, :]
-        # Exchange the lower region first
+        halo_region_send = x[:, :, -self.halo_size:, :]
         if self.comm.rank < 3:
-            self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
+            self.comm.send(halo_region_send, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
 
         if self.comm.rank > 0:
             received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
-            x = cp.concatenate((received_halo_region, x), axis=-2)
+            x = cp.concatenate((x, received_halo_region), axis=-2)
 
-        # Exchange the upper region
+        # Exchange the lower parts
+        halo_region_send = x[:, :, :self.halo_size, :]
         if self.comm.rank > 0:
-            self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
+            self.comm.send(halo_region_send, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
 
         if self.comm.rank < 3:
-
             received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
-            x = cp.concatenate((x, received_halo_region), axis=-2)
+
+            x = cp.concatenate((received_halo_region, x), axis=-2)
+
+        if self.comm.rank ==0:
+            with open("x_after_halo_exchange.txt", "w") as f:
+                    for i in range(x.shape[-2]):
+                        for j in range(x.shape[-1]):
+                            print("% 01.3f" % x[0, 0, i, j] , file=f, end="")
+                        print("\n", file=f)
+
+
 
         return x,
 
     def backward(self, target_input_indexes, grad_outputs):
-        x =self.get_retained_inputs()
         gy, = grad_outputs
-        end = (gy.shape)[-2] - self.halo_size
-        gy = gy[:, :, self.halo_size:end, :]
+        end = (gy.shape)[-1] - self.halo_size
+        gy = gy[:, :, :, self.halo_size: end]
         return gy,
 
 

@@ -106,7 +106,7 @@ nobias=False, initialW=None, initial_bias=None, *, dilate=1, groups=1)
 
     """
 
-    def __init__(self, comm,  in_channels, out_channels, ksize=None, stride=1, pad=0,
+    def __init__(self, in_channels, out_channels, ksize=None, stride=1, pad=0,
                  nobias=False, initialW=None, initial_bias=None, **kwargs):
         super(Convolution2D, self).__init__()
 
@@ -119,7 +119,6 @@ nobias=False, initialW=None, initial_bias=None, *, dilate=1, groups=1)
         if ksize is None:
             out_channels, ksize, in_channels = in_channels, out_channels, None
 
-        self.comm = comm
         self.ksize = ksize
         self.stride = _pair(stride)
         self.pad = _pair(pad)
@@ -127,11 +126,6 @@ nobias=False, initialW=None, initial_bias=None, *, dilate=1, groups=1)
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.groups = int(groups)
-
-        if (self.ksize % 2) == 0:
-            self.halo_size = self.ksize // 2
-        else:
-            self.halo_size = (self.ksize - 1) // 2
 
         with self.init_scope():
             W_initializer = initializers._get_initializer(initialW)
@@ -174,7 +168,6 @@ nobias=False, initialW=None, initial_bias=None, *, dilate=1, groups=1)
         self.W.initialize(W_shape)
 
     def forward(self, x):
-
         """Applies the convolution layer.
 
         Args:
@@ -187,8 +180,7 @@ nobias=False, initialW=None, initial_bias=None, *, dilate=1, groups=1)
         if self.W.array is None:
             self._initialize_params(x.shape[1])
         return convolution_2d.convolution_2d(
-            comm=self.comm, x=x, halo_size=self.halo_size, W=self.W,
-            b=self.b, stride=self.stride, pad=self.pad, dilate=self.dilate,
+            x, self.W, self.b, self.stride, self.pad, dilate=self.dilate,
             groups=self.groups)
 
 
