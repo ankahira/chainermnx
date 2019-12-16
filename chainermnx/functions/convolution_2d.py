@@ -1,3 +1,4 @@
+import sys
 import numpy
 
 import chainer
@@ -11,6 +12,10 @@ from chainer.utils import argument
 from chainer.utils import conv
 from chainer.utils import type_check
 import chainerx
+import cupy as cp
+import chainermnx
+import copy
+
 
 if cuda.cudnn_enabled:
     _cudnn_version = cuda.cuda.cudnn.getVersion()  # type: ignore
@@ -36,7 +41,7 @@ class Convolution2DFunction(function_node.FunctionNode):
 
     _use_ideep = False
 
-    def __init__(self, stride=1, pad=0, cover_all=False, **kwargs):
+    def __init__(self, comm, index, stride=1, pad=0, cover_all=False, **kwargs):
         dilate, groups = argument.parse_kwargs(
             kwargs, ('dilate', 1), ('groups', 1),
             deterministic='deterministic argument is not supported anymore. '
@@ -52,7 +57,8 @@ class Convolution2DFunction(function_node.FunctionNode):
         self.cover_all = cover_all
         self.dy, self.dx = _pair(dilate)
         self.groups = groups
-
+        self.comm = comm
+        self.index = index
         if self.dx < 1 or self.dy < 1:
             raise ValueError('Dilate should be positive, but {} is '
                              'supplied.'.format(dilate))
@@ -169,13 +175,11 @@ class Convolution2DFunction(function_node.FunctionNode):
             (x, W), b = inputs, None
         else:
             x, W, b = inputs
-
         out_c, _, kh, kw = W.shape
         n, _, h, w = x.shape
 
-        out_h, out_w = self._get_out_size(inputs)
+        out_h, out_w = self._get_out_size((x, W))
         y = cuda.cupy.empty((n, out_c, out_h, out_w), dtype=x.dtype)
-
         use_cudnn = (
             chainer.should_use_cudnn('>=auto')
             and not self.cover_all
@@ -253,21 +257,63 @@ class Convolution2DFunction(function_node.FunctionNode):
     def backward(self, indexes, grad_outputs):
         x, W = self.get_retained_inputs()
         gy, = grad_outputs
-        with open("gradients.txt", "w") as f:
-            for i in range(gy.shape[-2]):
-                for j in range(gy.shape[-1]):
-                    print("%01.3f" % gy[0,0,i,j].array, " ", file=f, end="")
-                print("\n", file=f)
+        if self.comm.rank == 1:
+            print("Index = ", self.index, "X = ", x.shape, "gy = ", gy.shape)
 
+        # if (x.shape[2] - 2) != gy.shape[2]:
+        #     end = (gy.shape)[-2] - (1)
+        #     gy = gy[:, :, 1:end, :]
+        #     print("new shape of gy", gy.shape)
+        # # Create a copy of gy to use calculate gx. The original is used to calculate gw
+        # halo_gy = copy.deepcopy(gy)
+        # # Extract the array from the variable for padding and halo exchange
+        # halo_gy_array = halo_gy.array
 
+        # # -----------------------------------------start halo exchange--------------------------------------3
+        #
+        # # Pad the top and bottom
+        # if self.pw != 0:
+        #     if self.comm.rank == 0:
+        #         # Pad the top
+        #         npad = ((0, 0), (0, 0), (self.pw, 0), (0, 0))
+        #         halo_gy_array = cp.pad(halo_gy_array, pad_width=npad, mode="constant")
+        #
+        #     if self.comm.rank == 3:
+        #         # Pad the bottom
+        #         npad = ((0, 0), (0, 0), (0, self.pw), (0, 0))
+        #         halo_gy_array = cp.pad(halo_gy_array, pad_width=npad, mode="constant")
+        #
+        # # Exchange the lower region first
+        # lower_halo_region = halo_gy_array[:, :, -1:, :]
+        # upper_halo_region = halo_gy_array[:, :, :1, :]
+        #
+        # if self.comm.rank < 3:
+        #     self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
+        # if self.comm.rank > 0:
+        #     received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
+        #     halo_gy_array = cp.concatenate((received_halo_region, halo_gy_array), axis=-2)
+        #
+        # # Exchange the upper region
+        # if self.comm.rank > 0:
+        #     self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
+        #
+        # if self.comm.rank < 3:
+        #     received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
+        #     halo_gy_array = cp.concatenate((halo_gy_array, received_halo_region), axis=-2)
+        #
+        # halo_gy.array = halo_gy_array
+        #
+        # # -----------------------------------------start halo exchange--------------------------------------#
 
         ret = []
         if 0 in indexes:
             xh, xw = x.shape[2:]
-            gx = chainer.functions.deconvolution_2d(
+            gx = chainermnx.functions.deconvolution_2d(self.comm, self.index,
                 gy, W, stride=(self.sy, self.sx), pad=(self.ph, self.pw),
                 outsize=(xh, xw), dilate=(self.dy, self.dx),
                 groups=self.groups)
+            print("Index", self.index, "completed this step gx shape is ", gx.shape)
+
             ret.append(gx)
         if 1 in indexes:
             gW, = Convolution2DGradW(self).apply((x, gy))
@@ -275,12 +321,10 @@ class Convolution2DFunction(function_node.FunctionNode):
         if 2 in indexes:
             gb = chainer.functions.sum(gy, axis=(0, 2, 3))
             ret.append(gb)
-
         return ret
 
 
 class Convolution2DGradW(function_node.FunctionNode):
-
     def __init__(self, conv2d):
         W_node = conv2d.inputs[1]
         self.kh, self.kw = W_node.shape[2:]
@@ -430,9 +474,7 @@ class Convolution2DGradW(function_node.FunctionNode):
 
     def backward(self, indexes, grad_outputs):
         x, gy = self.get_retained_inputs()
-
         ggW, = grad_outputs
-
         ret = []
         if 0 in indexes:
             xh, xw = x.shape[2:]
@@ -451,7 +493,7 @@ class Convolution2DGradW(function_node.FunctionNode):
         return ret
 
 
-def convolution_2d(x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
+def convolution_2d(comm, index, halo_size, halo_pad, x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
     """convolution_2d(x, W, b=None, stride=1, pad=0, cover_all=False, *, \
 dilate=1, groups=1)
 
@@ -582,13 +624,49 @@ cover_all=True)
         True
 
     """
+
     dilate, groups = argument.parse_kwargs(
         kwargs, ('dilate', 1), ('groups', 1),
         deterministic='deterministic argument is not supported anymore. '
         'Use chainer.using_config(\'cudnn_deterministic\', value) '
         'context where value is either `True` or `False`.')
 
-    fnode = Convolution2DFunction(stride, pad, cover_all, dilate=dilate,
+    # -----------------------------------Halo exchange before passing to conv function--------------------------#
+    # pad the top and bottom part
+
+    x_array = x.array
+
+    if halo_pad != 0:
+        if comm.rank == 0:
+            npad = ((0, 0), (0, 0), (halo_pad, 0), (0, 0))
+            x_array = cp.pad(x_array, pad_width=npad, mode="constant")
+
+        if comm.rank == 3:
+            npad = ((0, 0), (0, 0), (0, halo_pad), (0, 0))
+            x_array = cp.pad(x_array, pad_width=npad, mode="constant")
+
+    lower_halo_region = x_array[:, :, -halo_size:, :]
+    upper_halo_region = x_array[:, :, :halo_size, :]
+    # Exchange the lower region first
+    if comm.rank < 3:
+        comm.send(lower_halo_region, comm.rank + 1, (comm.rank + 1) * index)
+
+    if comm.rank > 0:
+        received_halo_region = comm.recv(comm.rank - 1, comm.rank * index)
+        x_array = cp.concatenate((received_halo_region, x_array), axis=-2)
+
+    # Exchange the upper region
+    if comm.rank > 0:
+        comm.send(upper_halo_region, comm.rank - 1, (comm.rank - 1) * index * 2)
+
+    if comm.rank < 3:
+        received_halo_region = comm.recv(comm.rank + 1, comm.rank * index * 2)
+        x_array = cp.concatenate((x_array, received_halo_region), axis=-2)
+    x.array = x_array
+
+    # ---------------------------------------End halo exchange--------------------------------------------------- #
+
+    fnode = Convolution2DFunction(comm, index, stride, pad, cover_all, dilate=dilate,
                                   groups=groups)
     if b is None:
         args = x, W

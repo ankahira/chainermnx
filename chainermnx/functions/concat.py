@@ -62,16 +62,17 @@ class Concat(function_node.FunctionNode):
         axis = self.axis % ndim
         return intel64.ideep.concat.Forward(xs_mdarray, axis),
 
-#    def backward(self, indexes, grad_outputs):
-#        if len(self.inputs) == 1:
-#            return grad_outputs
-#
-#        sizes = numpy.array(
-#            [v.shape[self.axis] for v in self.inputs[:-1]]
-#        ).cumsum()
-#        gx, = grad_outputs
-#        return chainer.functions.split_axis(gx, sizes, self.axis)
-#
+    def backward(self, indexes, grad_outputs):
+        if len(self.inputs) == 1:
+            return grad_outputs
+
+        sizes = numpy.array(
+            [v.shape[self.axis] for v in self.inputs[:-1]]
+        ).cumsum()
+        gx, = grad_outputs
+
+        return chainer.functions.split_axis(gx, sizes, self.axis)
+
 
 def concat(xs, axis=1):
     """Concatenates given variables along an axis.
