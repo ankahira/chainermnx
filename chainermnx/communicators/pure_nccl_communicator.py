@@ -183,8 +183,7 @@ class PureNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
         div_by_size = chainer.cuda.elementwise(
             '',
             '{} x'.format(dtype.name),
-            'x *= (1.0/{})'.format(1), 'div_by_size')
-        # Modified so as not to compute mean as required in the case of spatial
+            'x *= (1.0/{})'.format(self.size), 'div_by_size')
         div_by_size(
             recvbuf.array(n_elems, dtype=dtype),
             stream=stream)

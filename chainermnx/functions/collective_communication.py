@@ -34,13 +34,12 @@ class AllGather(chainer.Function):
             grad_outputs = tuple([item.astype(numpy.float32)
                                   for item in grad_outputs])
         gxs = self.comm.alltoall(grad_outputs)
+        # Sum has been removed in this function to facilate spatial all gather which doesnt require summation
         gx = gxs[self.comm.rank]
         # convert back
         if numpy.float16 == grad_dtype:
             gx = gx.astype(grad_dtype)
 
-        if self.comm.rank ==1:
-            print("gx shape being returned from all gather", gx.shape)
         return gx,
 
 
