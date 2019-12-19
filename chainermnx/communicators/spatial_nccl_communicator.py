@@ -1,7 +1,5 @@
 import warnings
-
 import chainer.cuda
-
 from chainermn.communicators import _communication_utility
 from chainermn.communicators import _memory_utility
 from chainermn.communicators import mpi_communicator_base
@@ -10,10 +8,10 @@ from chainermn import nccl
 import numpy as np
 
 
-class PureSpatialNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
+class SpatialNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
 
     def __init__(self, mpi_comm):
-        super(PureSpatialNcclCommunicator, self).__init__(mpi_comm)
+        super(SpatialNcclCommunicator, self).__init__(mpi_comm)
         if not nccl._available:
             raise RuntimeError(
                 'PureNcclCommunicator requires NCCL 2.0+, '
@@ -44,7 +42,7 @@ class PureSpatialNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
         self.params_data = None
 
     def finalize(self):
-        super(PureNcclCommunicator, self).finalize()
+        super(SpatialNcclCommunicator, self).finalize()
         if self.nccl_comm is not None:
             chainer.cuda.Stream.null.synchronize()
             self.mpi_comm.barrier()
@@ -71,13 +69,13 @@ class PureSpatialNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
             with self.config_scope():
                 self.allreduce_grad_dtype = allreduce_grad_dtype
         else:
-            super(PureSpatialNcclCommunicator, self).set_config(name, **kwargs)
+            super(SpatialNcclCommunicator, self).set_config(name, **kwargs)
 
     def get_config(self, name=None):
         if name == 'allreduce_grad_dtype':
             return self.allreduce_grad_dtype
         else:
-            return super(PureSpatialNcclCommunicator, self).get_config(name)
+            return super(SpatialNcclCommunicator, self).get_config(name)
 
     def bcast_data(self, model):
         self._init_comms()

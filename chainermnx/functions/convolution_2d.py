@@ -59,6 +59,8 @@ class Convolution2DFunction(function_node.FunctionNode):
         self.groups = groups
         self.comm = comm
         self.index = index
+        # create halo region here
+
         if self.dx < 1 or self.dy < 1:
             raise ValueError('Dilate should be positive, but {} is '
                              'supplied.'.format(dilate))

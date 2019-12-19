@@ -119,8 +119,8 @@ def create_communicator(
     # This line  is added to facilate a communicator that does not take the average. Specifically for spatial
     elif communicator_name == 'spatial_nccl':
         from chainermnx.communicators.spatial_nccl_communicator \
-            import PureNcclCommunicator
-        comm = PureNcclCommunicator(mpi_comm=mpi_comm)
+            import SpatialNcclCommunicator
+        comm = SpatialNcclCommunicator(mpi_comm=mpi_comm)
         comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
 
     elif communicator_name == 'dummy':
