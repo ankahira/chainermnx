@@ -1,18 +1,5 @@
-import math
 from abc import ABC
-import numpy as np
-import chainer
-import chainermn
-from chainer import backend
-from chainer import backends
-from chainer.backends import cuda
-from chainer import Function, FunctionNode, gradient_check, report, training, utils, Variable
-from chainer import datasets, initializers, iterators, optimizers, serializers
-from chainer import Link, Chain, ChainList
-import chainer.functions as F
-import chainer.links as L
-from chainer.training import extensions
-from chainermnx.functions import concat
+from chainer import FunctionNode
 import cupy as cp
 
 
@@ -34,11 +21,9 @@ class HaloExchangePooling(FunctionNode, ABC):
             npad = ((0, 0), (0, 0), (self.halo_size, 0), (0, 0))
             x = cp.pad(x, pad_width=npad, mode="constant")
 
-
         if self.comm.rank == 3:
             npad = ((0, 0), (0, 0), (0, self.halo_size), (0, 0))
             x = cp.pad(x, pad_width=npad, mode="constant")
-
 
         lower_halo_region = x[:, :, -self.halo_size:, :]
         upper_halo_region = x[:, :, :self.halo_size, :]
@@ -64,6 +49,7 @@ class HaloExchangePooling(FunctionNode, ABC):
         gy, = grad_outputs
         end = (gy.shape)[-2] - self.halo_size
         gy = gy[:, :, self.halo_size:end, :]
+
         return gy,
 
 

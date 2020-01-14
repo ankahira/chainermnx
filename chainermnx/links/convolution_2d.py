@@ -42,6 +42,12 @@ class Convolution2D(link.Link):
         # For halo exchange
         self.comm = comm
         self.index = index
+        # Calculate the Halo exchange region that will be passed to the conv2d function.
+
+        if (self.ksize % 2) == 0:
+            self.halo_size = self.ksize // 2
+        else:
+            self.halo_size = (self.ksize - 1) // 2
 
         with self.init_scope():
             W_initializer = initializers._get_initializer(initialW)
@@ -135,31 +141,26 @@ nobias=False, *, dilate=1, groups=1)
         return link
 
     def forward(self, x):
-        cp.cuda.Device(self.comm.rank).use()
-
         """Applies the convolution layer.
 
-                Args:
-                    x (~chainer.Variable): Input image.
+               Args:
+                   x (~chainer.Variable): Input image.
 
-                Returns:
-                    ~chainer.Variable: Output of the convolution.
+               Returns:
+                   ~chainer.Variable: Output of the convolution.
 
-                """
+               """
         x = chainer.as_variable(x)
         assert x.layout == self.x_layout
         # self.W can be a Variable instead of Parameter: #8462
         # TODO(niboshi): Use Parameter.is_initialized.
-
         if self.W.raw_array is None:
             _, c, _, _ = memory_layouts.get_semantic_shape(
                 x, assumed_layout=self.x_layout)
             self._initialize_params(c)
-
-        ret = convolution_2d.convolution_2d(self.comm, self.index, 1, self.pad[1],
-            x, self.W, self.b, self.stride, self.pad, dilate=self.dilate,
-            groups=self.groups)
-        return ret
+        return convolution_2d.convolution_2d(self.comm, self.index, self.halo_size,
+                                        x, self.W, self.b, self.stride, self.pad, dilate=self.dilate,
+                                        groups=self.groups)
 
 
 def _pair(x):

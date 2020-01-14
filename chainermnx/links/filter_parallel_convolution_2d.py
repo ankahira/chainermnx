@@ -20,5 +20,6 @@ class FilterParallelConvolution2D(chainer.links.Convolution2D):
         ys = chainermn.functions.allgather(self.comm, y)
         # Backward will be invoked as well as the ordinary chainer functions,
         # where gradients are reduced to each process
+        # Here the default chainermn allgather function is used
         return F.concat(ys, axis=1)
 

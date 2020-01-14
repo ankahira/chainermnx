@@ -25,3 +25,7 @@ class ChannelParallelConvolution2D(chainer.links.Convolution2D):
         ys = allreduce(self.comm, y)
         return ys
 
+
+
+## the all reduce function is implemented to facilate all gather in back prop.
+

@@ -28,7 +28,7 @@ class Deconvolution2DFunction(function_node.FunctionNode):
     cover_all = None
     _use_ideep = False
 
-    def __init__(self, comm, index, stride=1, pad=0, outsize=None, **kwargs):
+    def __init__(self, stride=1, pad=0, outsize=None, **kwargs):
         dilate, groups = argument.parse_kwargs(
             kwargs, ('dilate', 1), ('groups', 1),
             deterministic='deterministic argument is not supported anymore. '
@@ -44,9 +44,6 @@ class Deconvolution2DFunction(function_node.FunctionNode):
         self.outh, self.outw = (None, None) if outsize is None else outsize
         self.dy, self.dx = _pair(dilate)
         self.groups = groups
-        self.comm = comm
-        self.index = index
-
         if self.dx < 1 or self.dy < 1:
             raise ValueError('Dilate should be positive, but {} is '
                              'supplied.'.format(dilate))
