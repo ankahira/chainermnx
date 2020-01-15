@@ -5,6 +5,17 @@ import copy
 class _HybridMultiNodeOptimizer(object):
 
     def __init__(self, actual_optimizer, global_communicator, local_communicator, zero_fill):
+
+        """
+
+        we have a global comm and a local comm.
+
+
+        :param actual_optimizer:
+        :param global_communicator:
+        :param local_communicator:
+        :param zero_fill:
+        """
         super(_HybridMultiNodeOptimizer, self).__setattr__(
             'global_communicator', global_communicator)
         super(_HybridMultiNodeOptimizer, self).__setattr__(
@@ -31,8 +42,12 @@ class _HybridMultiNodeOptimizer(object):
         if self.is_changed(target):
             self.global_communicator.bcast_data(target)
         else:
-            # Do an all reduce on each node then a global all reduce
-            self.local_communicator.intra_node_allreduce_grad(target, self.zero_fill)
+            """
+            This is a critical part of hybrid. First do an all reduce on each node then do an all reduce globally. 
+            However the local all reduce is the modified all reduce such that it doesnt take the sum ie like spatial 
+            
+            """
+            self.local_communicator.intra_node_mean_grad(target, self.zero_fill)
             self.global_communicator.multi_node_mean_grad(target, self.zero_fill)
             self.actual_optimizer.update(None, *args, **kwds)
 

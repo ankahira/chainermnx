@@ -102,6 +102,11 @@ class SpatialHybridNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
         stream = chainer.cuda.Stream.null
         self._multi_node_mean_grad_async(model, zero_fill, stream)
 
+    # We add this for local node reduce
+    def intra_node_mean_grad(self, model, zero_fill=False):
+        stream = chainer.cuda.Stream.null
+        self._intra_node_mean_grad_async(model, zero_fill, stream)
+
     def _multi_node_mean_grad_async(self, model, zero_fill, stream):
         self._init_comms()
         params = _memory_utility.extract_params_set_grad(model, zero_fill)
@@ -138,7 +143,7 @@ class SpatialHybridNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
                                         allreduce_grad_dtype,
                                         zero_fill, stream)
 
-    def intra_node_allreduce_grad(self, model, zero_fill, stream):
+    def _intra_node_mean_grad_async(self, model, zero_fill, stream):
         self._init_comms()
         params = _memory_utility.extract_params_set_grad(model, zero_fill)
 
@@ -253,6 +258,12 @@ class SpatialHybridNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
                                  recvbuf.ptr(), n_elems,
                                  type_id, nccl.NCCL_SUM, stream.ptr)
         # This part of the function is modified
+
+        """
+        Instead of 'x *= (1.0/{})'.format(self.size) like in the PureNCCL communicator, we modify that to 
+        'x *= (1.0/{})' so that we dont take the average. 
+        
+        """
         div_by_size = chainer.cuda.elementwise(
             '',
             '{} x'.format(dtype.name),

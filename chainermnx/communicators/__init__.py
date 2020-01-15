@@ -122,7 +122,12 @@ def create_communicator(
             import SpatialNcclCommunicator
         comm = SpatialNcclCommunicator(mpi_comm=mpi_comm)
         comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
-
+    # This is fo hybrid communicator
+    elif communicator_name == 'spatial_hybrid_nccl':
+        from chainermnx.communicators.spatial_hybrid_nccl_communicator \
+            import SpatialHybridNcclCommunicator
+        comm = SpatialHybridNcclCommunicator(mpi_comm=mpi_comm)
+        comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
     elif communicator_name == 'dummy':
         from chainermn.communicators.dummy_communicator \
             import DummyCommunicator

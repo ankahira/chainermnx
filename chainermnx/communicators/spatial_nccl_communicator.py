@@ -178,7 +178,14 @@ class SpatialNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
         self.nccl_comm.allReduce(sendbuf.ptr(),
                                  recvbuf.ptr(), n_elems,
                                  type_id, nccl.NCCL_SUM, stream.ptr)
-        # Only this part of the communicator is modified so as not to take average
+
+
+        """
+         # Only this part of the communicator is modified so as not to take average
+         Instead of 'x *= (1.0/{})'.format(self.size) like in the PureNCCL communicator, we modify that to 
+         'x *= (1.0/{})' so that we dont take the average. 
+
+        """
         div_by_size = chainer.cuda.elementwise(
             '',
             '{} x'.format(dtype.name),
