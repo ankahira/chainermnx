@@ -40,6 +40,13 @@ def _matmul(a, b):
 
 class Convolution2DFunction(function_node.FunctionNode):
 
+    """
+    This is modified to allow halo exchange in back propagation
+
+    **** rename this to SpatialConv2D
+
+    """
+
     _use_ideep = False
 
     def __init__(self, comm, index, halo_size,  stride=1, pad=0, cover_all=False, **kwargs):

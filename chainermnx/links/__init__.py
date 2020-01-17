@@ -9,6 +9,10 @@ from chainermnx.links.spatial_parallel_convulution_3d import SpatialConvolution3
 from chainermnx.links.filter_parallel_linear import FilterParallelFC
 from chainermnx.links.channel_parallel_linear import ChannelParallelFC
 
+# this is the one with halo exchange
+# Change this in the future for generalisaion
 from chainermnx.links.convolution_2d import Convolution2D
+from chainermnx.links.spatial_convolution_nd import SpatialConvolution3D
+
 
 
