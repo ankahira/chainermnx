@@ -12,6 +12,7 @@ from chainer.utils import conv
 from chainer.utils import conv_nd
 from chainer.utils import type_check
 import chainerx
+import cupy as cp
 
 
 class SpatialConvolutionND(function_node.FunctionNode):
@@ -27,6 +28,8 @@ class SpatialConvolutionND(function_node.FunctionNode):
         self.comm = comm
         self.index = index
         self.halo_size = halo_size
+        # Added this line to get the pad width. Easier than changing all code
+        self.pw = self.pad[0]
 
     def check_type_forward(self, in_types):
         n_in = in_types.size()
@@ -195,18 +198,128 @@ class SpatialConvolutionND(function_node.FunctionNode):
     def backward(self, indexes, grad_outputs):
         x, W = self.get_retained_inputs()
         gy, = grad_outputs
-
         # Halo exchange needs to happen here
 
+        # Create a copy of gy to use calculate gx. The original is used to calculate gw
+        # this might be causing memory issues
 
+        # To avoid memory issues. Halo exchage on the same variable, compute gx, remove the halos, then compute gW
+
+        # halo_gy = copy.deepcopy(gy)
+        # Extract the array from the variable for padding and halo exchange
+        halo_gy_array = gy.array
+
+        # Only do halo exchange when halo region is not 0
+
+        if self.halo_size != 0:
+            # -----------------------------------------start halo exchange--------------------------------------3
+            # Pad the top and bottom
+            if self.pw != 0:
+                if self.comm.rank == 0:
+                    # Pad the top
+                    # check the padding dimensions in case of 3D
+                    npad = ((0, 0), (0, 0), (self.pw, 0), (0, 0))
+                    halo_gy_array = cp.pad(halo_gy_array, pad_width=npad, mode="constant")
+
+                if self.comm.rank == 3:
+                    # Pad the bottom
+                    npad = ((0, 0), (0, 0), (0, self.pw), (0, 0))
+                    halo_gy_array = cp.pad(halo_gy_array, pad_width=npad, mode="constant")
+            # Exchange the lower region first
+            lower_halo_region = halo_gy_array[:, :, :, -self.halo_size:, :]
+            upper_halo_region = halo_gy_array[:, :, :, :self.halo_size, :]
+
+            if self.comm.rank < 3:
+                self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
+            if self.comm.rank > 0:
+                received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
+                halo_gy_array = cp.concatenate((received_halo_region, halo_gy_array), axis=-2)
+
+            # Exchange the upper region
+            if self.comm.rank > 0:
+                self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
+
+            if self.comm.rank < 3:
+                received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
+                halo_gy_array = cp.concatenate((halo_gy_array, received_halo_region), axis=-2)
+
+            gy.array = halo_gy_array
+        # -----------------------------------------End halo exchange--------------------------------------#
         ret = []
         if 0 in indexes:
+            # Slight adjustment here to get l,w, h (rename variable x_shape to 3 new variables)
+            xl, xw, xh = x.shape[2:]
             x_shape = x.shape[2:]
-            gx = chainer.functions.deconvolution_nd(
-                gy, W, stride=self.stride, pad=self.pad, outsize=x_shape,
-                dilate=self.dilate, groups=self.groups)
-            ret.append(gx)
+
+            if self.halo_size == 0:
+                # There was no halo exchange so normal function
+                gx = chainer.functions.deconvolution_nd(
+                    gy, W, stride=self.stride, pad=self.pad, outsize=x_shape,
+                    dilate=self.dilate, groups=self.groups)
+                ret.append(gx)
+            else:
+                # Adjust the output shape
+                if self.pw == 0:
+                    # If its top and bottom part, then extend only once since those receive just one halo region
+                    if self.comm.rank == 0 or self.comm.rank == 3:
+                        gx = chainer.functions.deconvolution_nd(
+                            gy, W, stride=self.stride, pad=self.pad,
+                            outsize=(xl, xw + self.halo_size, xh),
+                            dilate=self.dilate, groups=self.groups)
+                        # remove the extra rows before returning gx
+                        if self.comm.rank == 0:
+                            # remove the lower part
+                            end = gx.shape[-2] - self.halo_size
+                            gx = gx[:, :, :, :end, :]
+                            ret.append(gx)
+                        if self.comm.rank == 3:
+                            # remove the upper part
+                            gx = gx[:, :, :, self.halo_size:, :]
+                            ret.append(gx)
+                    else:
+                        gx = chainer.functions.deconvolution_nd(
+                            gy, W, stride=self.stride, pad=self.pad,
+                            outsize=(xl, xw + self.halo_size + self.halo_size, xh),
+                            dilate=self.dilate, groups=self.groups)
+                        # remove the extra rows before returning gx
+                        end = gx.shape[-2] - self.halo_size
+                        gx = gx[:, :, :, self.halo_size:end, :]
+                        ret.append(gx)
+
+                else:
+                    gx = chainer.functions.deconvolution_nd(
+                        gy, W, stride=self.stride, pad=self.pad,
+                        outsize=(xl, xw + self.halo_size + self.halo_size, xh),
+                        dilate=self.dilate, groups=self.groups)
+                    # remove the extra rows before returning gx
+                    end = gx.shape[-2] - self.halo_size
+                    gx = gx[:, :, :, self.halo_size:end, :]
+                    ret.append(gx)
         if 1 in indexes:
+            """
+           Remove the halo exchanges before computing gW.
+           Factor in the case where padding is zero. In that case only remove the halo from one side,
+           ie if its rank 0 then remove bottom part and if its rank 3 then remove top part. Also factor in the cases
+           Where there was no halo exchange
+           The implementation in this part is a bit crude at the moment. Find a way to reduce the ifs
+
+            """
+            if self.halo_size != 0:
+                if self.pw == 0:
+                    if self.comm.rank == 0:
+                        end = gy.shape[-2] - self.halo_size
+                        gy = gy[:, :, :, :end, :]
+                    if self.comm.rank == 3:
+                        gy = gy[:, :, :, self.halo_size:, :]
+                    if self.comm.rank == 1:
+                        end = gy.shape[-2] - self.halo_size
+                        gy = gy[:, :, :, self.halo_size:end, :]
+                    if self.comm.rank == 2:
+                        end = gy.shape[-2] - self.halo_size
+                        gy = gy[:, :, :, self.halo_size:end, :]
+                else:
+                    end = gy.shape[-2] - self.halo_size
+                    gy = gy[:, :, :, self.halo_size:end, :]
             gW, = ConvolutionNDGradW(self).apply((x, gy))
             ret.append(gW)
         if 2 in indexes:
@@ -215,12 +328,10 @@ class SpatialConvolutionND(function_node.FunctionNode):
             if gb.dtype != self.inputs[2].dtype:
                 gb = chainer.functions.cast(gb, self.inputs[2].dtype)
             ret.append(gb)
-
         return ret
 
 
 class ConvolutionNDGradW(function_node.FunctionNode):
-
     def __init__(self, convnd):
         W_node = convnd.inputs[1]
         self.ndim = convnd.ndim
@@ -285,7 +396,6 @@ class ConvolutionNDGradW(function_node.FunctionNode):
         mul_len = iCg * utils.size_of_shape(k_size)
         x = x.reshape(G, mul_len, N * o_size_prod)
         x = x.transpose(0, 2, 1)  # (G, N*o_size, iCg*k_size)
-
         gy = xp.rollaxis(gy, 1)  # (oC, N, o_size...)
         gy = gy.reshape(G, oCg, N * o_size_prod)
 
@@ -502,7 +612,7 @@ astype(np.float32)
 
     """
     ndim = len(x.shape[2:])
-    fnode = ConvolutionND(
+    fnode = SpatialConvolutionND(comm, index, halo_size,
         ndim, stride, pad, cover_all, dilate=dilate, groups=groups)
     args = (x, W) if b is None else (x, W, b)
     y, = fnode.apply(args)

@@ -36,7 +36,10 @@ class _HybridMultiNodeOptimizer(object):
                 target.cleargrads()
             else:
                 target.zerograds()
-            loss.backward(loss_scale=self.actual_optimizer._loss_scale)
+            # we removed this to be able to run Cosmoflow
+            # FIX ME PLEASE
+            #
+            # loss.backward(loss_scale=self.actual_optimizer._loss_scale)
             del loss
         if self.is_changed(target):
             self.global_communicator.bcast_data(target)
@@ -167,7 +170,7 @@ class _DoubleBufferingOptimizer(object):
         setattr(self.actual_optimizer, attr_name, value)
 
 
-def create_hybrid_multi_node_optimizer(actual_optimizer, global_communicator, local_communicator,
+def create_hybrid_multi_node_optimizer_alpha(actual_optimizer, global_communicator, local_communicator,
                                        double_buffering=False, zero_fill=True):
     """Create a Hybrid multi node optimizer from a Chainer optimizer.
     This function is modified from the origal multinode optimiser so as to perform a a sum all reduce on local

@@ -3,7 +3,7 @@ from chainer import FunctionNode
 import cupy as cp
 
 
-class HaloExchange(FunctionNode, ABC):
+class HaloExchange3D(FunctionNode, ABC):
     def __init__(self, comm, k_size, index, pad):
         self.comm = comm
         self.index = index
@@ -29,6 +29,7 @@ class HaloExchange(FunctionNode, ABC):
             # In the case where there is no padding, be careful to remove the halos from just the top and bottom part
             # ranks 0 and 3
 
+            # This padding thing is not working. Much detailed attention is required to find the right dimensions to pad
             if self.pad != 0:
                 if self.comm.rank == 0:
                     npad = ((0, 0), (0, 0), (self.pad, 0), (0, 0))
@@ -38,8 +39,8 @@ class HaloExchange(FunctionNode, ABC):
                     npad = ((0, 0), (0, 0), (0, self.pad), (0, 0))
                     x = cp.pad(x, pad_width=npad, mode="constant")
 
-            lower_halo_region = x[:, :, -self.halo_size:, :]
-            upper_halo_region = x[:, :, :self.halo_size, :]
+            lower_halo_region = x[:, :, :, -self.halo_size:, :]
+            upper_halo_region = x[:, :, :, :self.halo_size, :]
             # Exchange the lower region first
             if self.comm.rank < 3:
                 self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
@@ -65,23 +66,23 @@ class HaloExchange(FunctionNode, ABC):
                 # For cases where pad was zero
                 if self.comm.rank == 0:
                     end = gy.shape[-2] - self.halo_size
-                    gy = gy[:, :, :end, :]
+                    gy = gy[:, :, :, :end, :]
                 if self.comm.rank == 3:
-                    gy = gy[:, :, self.halo_size:, :]
+                    gy = gy[:, :, :, self.halo_size:, :]
                 if self.comm.rank == 1:
                     end = gy.shape[-2] - self.halo_size
-                    gy = gy[:, :, self.halo_size:end, :]
+                    gy = gy[:, :, :, self.halo_size:end, :]
                 if self.comm.rank == 2:
                     end = gy.shape[-2] - self.halo_size
-                    gy = gy[:, :, self.halo_size:end, :]
+                    gy = gy[:, :, :, self.halo_size:end, :]
             else:
                 end = gy.shape[-2] - self.halo_size
-                gy = gy[:, :, self.halo_size:end, :]
+                gy = gy[:, :, :, self.halo_size:end, :]
         return gy,
 
 
-def halo_exchange(comm, x, k_size, index, pad):
-    func = HaloExchange(comm=comm, k_size=k_size, index=index, pad=pad)
+def halo_exchange_3d(comm, x, k_size, index, pad):
+    func = HaloExchange3D(comm=comm, k_size=k_size, index=index, pad=pad)
     return func.apply((x,))[0]
 
 

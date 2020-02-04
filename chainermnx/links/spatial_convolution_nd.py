@@ -126,10 +126,10 @@ class SpatialConvolutionND(link.Link):
         self.index = index
         # Calculate the Halo exchange region that will be passed to the conv2d function.
 
-        if (self.ksize % 2) == 0:
-            self.halo_size = self.ksize // 2
+        if (ksize % 2) == 0:
+            self.halo_size = ksize // 2
         else:
-            self.halo_size = (self.ksize - 1) // 2
+            self.halo_size = (ksize - 1) // 2
 
         with self.init_scope():
             W_initializer = initializers._get_initializer(initialW)
@@ -220,7 +220,7 @@ nobias=False, *, cover_all=False, dilate=1, groups=1)
         """
         if self.W.array is None:
             self._initialize_params(x.shape[1])
-        return spatial_convolution_nd.spatial_convolution_nd(
+        return spatial_convolution_nd.spatial_convolution_nd(self.comm, self.index, self.halo_size,
             x, self.W, self.b, self.stride, self.pad, cover_all=self.cover_all,
             dilate=self.dilate, groups=self.groups)
 

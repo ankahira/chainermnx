@@ -6,6 +6,7 @@ from chainermn.communicators import _communication_utility
 from chainermn.communicators import _memory_utility
 from chainermn.communicators import mpi_communicator_base
 from chainermn import nccl
+import time
 
 import numpy as np
 
@@ -177,9 +178,15 @@ class PureNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
             stream = chainer.cuda.Stream.null
         self._init_comms()
         type_id = _communication_utility._get_nccl_type_id(dtype)
+
+        # Code to measure communication time
+        t1 = time.time()
         self.nccl_comm.allReduce(sendbuf.ptr(),
                                  recvbuf.ptr(), n_elems,
                                  type_id, nccl.NCCL_SUM, stream.ptr)
+        t2 = time.time()
+        comm_time = t2 - t1
+        # print("Communication time :  ",  "{:.10f}".format(comm_time))
         div_by_size = chainer.cuda.elementwise(
             '',
             '{} x'.format(dtype.name),

@@ -319,11 +319,18 @@ class Convolution2DFunction(function_node.FunctionNode):
         ret = []
         if 0 in indexes:
             xh, xw = x.shape[2:]
+
+            # Why did i do this ?
+
             if self.halo_size == 0:
+                # consider the case without padding. The output for ranks 0 and 3 will be different
+
                 gx = chainer.functions.deconvolution_2d(gy, W, stride=(self.sy, self.sx), pad=(self.ph, self.pw),
                                                         outsize=(xh, xw),
                                                         dilate=(self.dy, self.dx),
                                                         groups=self.groups)
+                # If there is no halo exchange this should be fixed. Nothing to worry for now since all have
+                # halo exchange
                 end = gx.shape[-2] - self.halo_size
                 gx = gx[:, :, self.halo_size:end, :]
                 ret.append(gx)
@@ -331,6 +338,7 @@ class Convolution2DFunction(function_node.FunctionNode):
                 gx = chainer.functions.deconvolution_2d(gy, W, stride=(self.sy, self.sx), pad=(self.ph, self.pw),
                     outsize=(xh+self.halo_size+self.halo_size, xw), dilate=(self.dy, self.dx),
                     groups=self.groups)
+
                 end = gx.shape[-2] - self.halo_size
                 gx = gx[:, :, self.halo_size:end, :]
                 ret.append(gx)
@@ -361,6 +369,7 @@ class Convolution2DFunction(function_node.FunctionNode):
                     gy = gy[:, :, self.halo_size:end, :]
             gW, = Convolution2DGradW(self).apply((x, gy))
             ret.append(gW)
+
         if 2 in indexes:
             gb = chainer.functions.sum(gy, axis=(0, 2, 3))
             ret.append(gb)

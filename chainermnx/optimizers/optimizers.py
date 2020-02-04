@@ -148,6 +148,8 @@ class _DoubleBufferingOptimizer(object):
 
 def create_multi_node_optimizer(actual_optimizer, communicator,
                                 double_buffering=False, zero_fill=True):
+
+
     """Create a multi node optimizer from a Chainer optimizer.
 
     Args:

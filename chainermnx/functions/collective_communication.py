@@ -4,7 +4,7 @@ from chainer import backend
 import numpy
 
 
-class AllGather(chainer.Function):
+class SpatialAllGather(chainer.Function):
     """Collective all-gather communication."""
 
     def __init__(self, comm):
@@ -34,7 +34,7 @@ class AllGather(chainer.Function):
             grad_outputs = tuple([item.astype(numpy.float32)
                                   for item in grad_outputs])
         gxs = self.comm.alltoall(grad_outputs)
-        # Sum has been removed in this function to facilate spatial all gather which doesnt require summation
+        # Sum has been removed in this function to facilitate spatial all gather which doesnt require summation
         gx = gxs[self.comm.rank]
         # convert back
         if numpy.float16 == grad_dtype:
@@ -260,7 +260,7 @@ class Scatter(chainer.Function):
             return dummy_var
 
 
-def allgather(comm, x):
+def spatialallgather(comm, x):
     """Differentiable all-gather communication between workers.
 
     This function invokes gather communications among processes specified
@@ -281,7 +281,7 @@ def allgather(comm, x):
     """
     chainer.utils.experimental('chainermn.functions.all_gather')
 
-    return AllGather(comm)(x)
+    return SpatialAllGather(comm)(x)
 
 
 def alltoall(comm, xs):

@@ -97,22 +97,22 @@ def create_communicator(
     comm = None
 
     if communicator_name == 'naive':
-        from chainermn.communicators.naive_communicator \
+        from chainermnx.communicators.naive_communicator \
             import NaiveCommunicator
         comm = NaiveCommunicator(mpi_comm=mpi_comm)
 
     elif communicator_name == 'flat':
-        from chainermn.communicators.flat_communicator \
+        from chainermnx.communicators.flat_communicator \
             import FlatCommunicator
         comm = FlatCommunicator(mpi_comm=mpi_comm)
 
     elif communicator_name == 'non_cuda_aware':
-        from chainermn.communicators.non_cuda_aware_communicator \
+        from chainermnx.communicators.non_cuda_aware_communicator \
             import NonCudaAwareCommunicator
         comm = NonCudaAwareCommunicator(mpi_comm=mpi_comm)
 
     elif communicator_name == 'pure_nccl':
-        from chainermn.communicators.pure_nccl_communicator \
+        from chainermnx.communicators.pure_nccl_communicator \
             import PureNcclCommunicator
         comm = PureNcclCommunicator(mpi_comm=mpi_comm)
         comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
@@ -129,7 +129,7 @@ def create_communicator(
         comm = SpatialHybridNcclCommunicator(mpi_comm=mpi_comm)
         comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
     elif communicator_name == 'dummy':
-        from chainermn.communicators.dummy_communicator \
+        from chainermnx.communicators.dummy_communicator \
             import DummyCommunicator
         comm = DummyCommunicator(mpi_comm=mpi_comm)
 
