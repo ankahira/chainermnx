@@ -128,6 +128,13 @@ def create_communicator(
             import SpatialHybridNcclCommunicator
         comm = SpatialHybridNcclCommunicator(mpi_comm=mpi_comm)
         comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
+
+        # This line  is added to monitor time and memory for channel parallelism
+    elif communicator_name == 'channel_nccl':
+        from chainermnx.communicators.channel_nccl_communicator  \
+            import ChannelNcclCommunicator
+        comm = ChannelNcclCommunicator(mpi_comm=mpi_comm)
+        comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
     elif communicator_name == 'dummy':
         from chainermnx.communicators.dummy_communicator \
             import DummyCommunicator

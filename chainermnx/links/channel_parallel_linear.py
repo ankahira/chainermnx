@@ -4,8 +4,9 @@ from chainermnx.functions import allreduce
 
 
 class ChannelParallelFC(chainer.links.Linear):
-    def __init__(self, comm, in_size, out_size):
+    def __init__(self, comm, index,  in_size, out_size):
         self.comm = comm
+        self.index = index
         self.in_size = in_size
         if self.in_size is None:
             self.out_size = out_size
@@ -31,12 +32,12 @@ class ChannelParallelFC(chainer.links.Linear):
             _channel_indices = [i for i in indices if i < in_channels]
             x = x[:, _channel_indices, :, :]
             y = super(ChannelParallelFC, self).__call__(x)
-            ys = allreduce(self.comm, y)
+            ys = allreduce(self.comm, y, self.index)
             return ys
         else:
             x = x[:, self._channel_indices]
             y = super(ChannelParallelFC, self).__call__(x)
-            ys = allreduce(self.comm, y)
+            ys = allreduce(self.comm, y, self.index)
             return ys
 
 
