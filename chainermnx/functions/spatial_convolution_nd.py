@@ -14,6 +14,8 @@ from chainer.utils import type_check
 import chainerx
 import cupy as cp
 
+import time
+
 
 class SpatialConvolutionND(function_node.FunctionNode):
 
@@ -198,7 +200,10 @@ class SpatialConvolutionND(function_node.FunctionNode):
     def backward(self, indexes, grad_outputs):
         x, W = self.get_retained_inputs()
         gy, = grad_outputs
+
         # Halo exchange needs to happen here
+
+        start = time.time()
 
         # Create a copy of gy to use calculate gx. The original is used to calculate gw
         # this might be causing memory issues
@@ -245,6 +250,12 @@ class SpatialConvolutionND(function_node.FunctionNode):
 
             gy.array = halo_gy_array
         # -----------------------------------------End halo exchange--------------------------------------#
+
+        stop = time.time()
+
+        if self.comm.rank == 0:
+            print("Layer ", self.index, "Backward Halo Exchange Time ", stop - start)
+
         ret = []
         if 0 in indexes:
             # Slight adjustment here to get l,w, h (rename variable x_shape to 3 new variables)

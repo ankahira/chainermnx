@@ -183,6 +183,7 @@ class MpiCommunicatorBase(communicator_base.CommunicatorBase):
             'chainermn.communicators.MpiCommunicatorBase.alltoall')
 
         if len(xs) != self.size:
+            print(len(xs), self.size)
             raise ValueError(
                 'The length of data must be same as communicator size.')
 
@@ -527,8 +528,8 @@ class MpiCommunicatorBase(communicator_base.CommunicatorBase):
         start = time.time()
         self.mpi_comm.Allreduce(sbuf, dbuf_buffer_obj)
         stop = time.time()
-        if self.mpi_comm.rank == 0:
-            print("Time is ", stop-start)
+        # if self.mpi_comm.rank == 0:
+        #     print("Time is ", stop-start)
 
         return dbuf.reshape(shape)
 

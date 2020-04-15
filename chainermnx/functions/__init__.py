@@ -1,4 +1,5 @@
-from chainermnx.functions.communication import allreduce
+from chainermnx.functions.communication import allreduce # this is my own implementation
+from chainermnx.functions.collective_communication import allgather  # this is original
 from chainermnx.functions.concat import concat
 from chainermnx.functions.halo_exchange import halo_exchange
 from chainermnx.functions.pooling_halo_exchange import pooling_halo_exchange

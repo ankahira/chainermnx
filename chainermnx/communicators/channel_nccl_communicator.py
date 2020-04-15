@@ -198,3 +198,36 @@ class ChannelNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase)
         if chainer.is_debug():
             stream.synchronize()
             self._ensure_all_finite(recvbuf.array(n_elems, dtype=dtype))
+
+    def channel_allreduce(self, x):
+        # To perform allreduce using NCCL. _multi_node_mean_nccl is a protected method so use this method to return it
+        self._init_comms()
+
+        gpu_buffer_n_elems = x.size * 2
+        gpu_buffer_size = x.dtype.itemsize * gpu_buffer_n_elems
+
+        gpu_buffer_a = _memory_utility.DeviceMemory()
+        gpu_buffer_b = _memory_utility.DeviceMemory()
+
+        gpu_buffer_a.assign(gpu_buffer_size)
+        gpu_buffer_b.assign(gpu_buffer_size)
+
+        type_id = _communication_utility._get_nccl_type_id(x.dtype)
+
+
+        stream = chainer.cuda.Stream.null
+
+        self.nccl_comm.allReduce(gpu_buffer_a.ptr(), gpu_buffer_b.ptr(), gpu_buffer_n_elems, type_id,  nccl.NCCL_SUM, stream.ptr)
+
+        gpu_buffer_a_array = gpu_buffer_b.array(
+            gpu_buffer_n_elems,
+            dtype=x.dtype)
+
+
+        print("Passed here-----------------------------")
+
+
+        return 0
+
+
+

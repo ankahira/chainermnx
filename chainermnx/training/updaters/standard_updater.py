@@ -1,5 +1,5 @@
 import warnings
-
+import os
 import six
 import time
 
@@ -10,6 +10,8 @@ from chainer.dataset import iterator as iterator_module
 from chainer import device_resident
 from chainer.training import _updater
 from chainer.utils import argument
+
+from datetime import datetime
 
 
 class StandardUpdater(_updater.Updater):
@@ -78,14 +80,26 @@ loss_func=None, loss_scale=None, auto_new_epoch=True, *, input_device=None)
 
     """
 
-    def __init__(self, iterator, optimizer, converter=convert.concat_examples,
+    def __init__(self, iterator, optimizer, comm, converter=convert.concat_examples,
                  device=None, loss_func=None, loss_scale=None,
-                 auto_new_epoch=True, **kwargs):
+                 auto_new_epoch=True, out="result", **kwargs):
         input_device, = argument.parse_kwargs(
             kwargs, ('input_device', None))
 
+        # We add this lines to have an output dir for measuring time
+        self.out = out
+        # Create the output dir but it should probably exist.
+        try:
+            os.makedirs(self.out)
+        except OSError:
+            pass
+
         if device is not None:
             device = chainer.get_device(device)
+
+        # We only need the comm in order to print with one rank
+
+        self.comm = comm
 
         # input_device falls back to device
         if input_device is None:
@@ -242,7 +256,6 @@ to a given device, specify the 'input_device' argument instead and leave the \
 
     def update_core(self):
         # IO time measurements
-
         t1 = time.time()
 
         iterator = self._iterators['main']
@@ -267,12 +280,16 @@ to a given device, specify the 'input_device' argument instead and leave the \
 
         t3 = time.time()
 
-        data_time = t2-t1
+        io_time = t2-t1
         compute_time = t3 - t2
 
         # TODO
         # delete this once its done
-        print("{:.6f}".format(data_time), "   ", "{:.6f}".format(compute_time))
+        compute_time_file = open(os.path.join(self.out, "compute_times.log"), "a")
+        io_time_file = open(os.path.join(self.out, "io_times.log"), "a")
+        if self.comm.rank == 0:
+            print("{:.6f}".format(compute_time),  file=compute_time_file)
+            print("{:.6f}".format(io_time), file=io_time_file)
 
     def serialize(self, serializer):
         """Serializes the current state of the updater object."""

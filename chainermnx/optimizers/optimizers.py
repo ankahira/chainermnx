@@ -1,10 +1,12 @@
 import chainer
 import copy
+import time
+import os
 
 
 class _MultiNodeOptimizer(object):
 
-    def __init__(self, actual_optimizer, communicator, zero_fill):
+    def __init__(self, actual_optimizer, communicator, out, zero_fill):
         super(_MultiNodeOptimizer, self).__setattr__(
             'communicator', communicator)
         super(_MultiNodeOptimizer, self).__setattr__(
@@ -13,6 +15,7 @@ class _MultiNodeOptimizer(object):
             'target_params', [])
         super(_MultiNodeOptimizer, self).__setattr__(
             'zero_fill', zero_fill)
+        self.out = out
 
     def update(self, lossfun=None, *args, **kwds):
         target = self.target
@@ -26,11 +29,19 @@ class _MultiNodeOptimizer(object):
             loss.backward(loss_scale=self.actual_optimizer._loss_scale)
             del loss
 
+        start = time.time()
         if self.is_changed(target):
             self.communicator.bcast_data(target)
         else:
             self.communicator.multi_node_mean_grad(target, self.zero_fill)
             self.actual_optimizer.update(None, *args, **kwds)
+        stop = time.time()
+
+        allreduce_time = stop-start
+
+        allreduce_time_file = open(os.path.join(self.out, "allreduce_times.log"), "a")
+        if self.communicator.rank == 0:
+            print("{:.6f}".format(allreduce_time), file=allreduce_time_file)
 
     def is_changed(self, target):
         previous_params = self.target_params
@@ -146,11 +157,13 @@ class _DoubleBufferingOptimizer(object):
         setattr(self.actual_optimizer, attr_name, value)
 
 
-def create_multi_node_optimizer(actual_optimizer, communicator,
+def create_multi_node_optimizer(actual_optimizer, communicator, out="result",
                                 double_buffering=False, zero_fill=True):
 
 
     """Create a multi node optimizer from a Chainer optimizer.
+    Added an ouput dir here for logging purposes.
+
 
     Args:
         actual_optimizer: Chainer optimizer
@@ -180,5 +193,5 @@ def create_multi_node_optimizer(actual_optimizer, communicator,
                 'This communicator does not support double buffering.')
         return _DoubleBufferingOptimizer(actual_optimizer, communicator,
                                          zero_fill)
-    return _MultiNodeOptimizer(actual_optimizer, communicator,
+    return _MultiNodeOptimizer(actual_optimizer, communicator, out,
                                zero_fill)

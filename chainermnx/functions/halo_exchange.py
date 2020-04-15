@@ -1,6 +1,7 @@
 from abc import ABC
 from chainer import FunctionNode
 import cupy as cp
+import time
 
 
 class HaloExchange(FunctionNode, ABC):
@@ -16,7 +17,7 @@ class HaloExchange(FunctionNode, ABC):
 
     def forward(self, inputs):
         x, = inputs
-
+        start = time.time()
         if self.comm is None:
             return x,
 
@@ -55,10 +56,14 @@ class HaloExchange(FunctionNode, ABC):
             if self.comm.rank < 3:
                 received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
                 x = cp.concatenate((x, received_halo_region), axis=-2)
-
+        stop = time.time()
+        # if self.comm.rank == 0:
+        #     print("Layer ", self.index, "Forward HaloExchange Time ", stop-start)
         return x,
 
     def backward(self, target_input_indexes, grad_outputs):
+        # Here we are just doing the reshaping. Actual halo exchange for backward takes place in the
+        # convolution function.
         gy, = grad_outputs
         if self.halo_size != 0:
             if self.pad == 0:

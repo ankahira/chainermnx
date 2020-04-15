@@ -13,6 +13,7 @@ from chainer.utils import type_check
 import chainerx
 import cupy as cp
 import cupy
+import time
 
 mempool = cupy.get_default_memory_pool()
 pinned_mempool = cupy.get_default_pinned_memory_pool()
@@ -268,6 +269,8 @@ class Convolution2DFunction(function_node.FunctionNode):
         x, W = self.get_retained_inputs()
         gy, = grad_outputs
 
+        # There is a duplicate of this method at spatial_convulution.py. Not sure why or if they do the same thing
+
         # Create a copy of gy to use calculate gx. The original is used to calculate gw
         # this might be causing memory issues
 
@@ -278,6 +281,8 @@ class Convolution2DFunction(function_node.FunctionNode):
         halo_gy_array = gy.array
 
         # Only do halo exchange when halo region is not 0
+
+        start = time.time()
 
         if self.halo_size != 0:
             # -----------------------------------------start halo exchange--------------------------------------3
@@ -315,6 +320,9 @@ class Convolution2DFunction(function_node.FunctionNode):
             gy.array = halo_gy_array
 
             # -----------------------------------------End halo exchange--------------------------------------#
+        stop = time.time()
+        if self.comm.rank == 0:
+            print("Layer ", self.index, "Backward HaloExchange Time ", stop - start)
 
         ret = []
         if 0 in indexes:

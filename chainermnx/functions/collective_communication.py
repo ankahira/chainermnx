@@ -1,7 +1,58 @@
 import chainer
 from chainer import backend
-
+import time
 import numpy
+
+
+class AllGather(chainer.Function):
+    """Collective all-gather communication."""
+
+    def __init__(self, comm, index):
+        chainer.utils.experimental('chainermn.functions.AllGather')
+        self.comm = comm
+        self.index = index
+
+    def forward(self, inputs):
+
+        # Note that there is no stacking being done here
+        # That should give some idea for channel case.
+        x, = inputs
+        x_dtype = x.dtype
+
+        # convert to float32 for communication
+        if numpy.float16 == x_dtype:
+            x = x.astype(numpy.float32)
+        start = time.time()
+        ret = self.comm.allgather(x)
+        stop = time.time()
+        # if self.comm.rank == 0:
+        #     print("Layer ", self.index, "Time for Forward AllGather ", stop -start)
+        # convert back
+        if numpy.float16 == x_dtype:
+            ret = tuple([item.astype(x_dtype) for item in ret])
+        return ret
+
+    def backward(self, inputs, grad_outputs):
+        xp = backend.get_array_module(*inputs)
+        grad_dtype = grad_outputs[0].dtype
+
+        # convert to float32 for communication
+        if numpy.float16 == grad_dtype:
+            grad_outputs = tuple([item.astype(numpy.float32)
+                                  for item in grad_outputs])
+
+        # start = time.time()
+        # print(type(grad_outputs), len(grad_outputs), self.comm.size, grad_outputs[2].shape)
+        gxs = self.comm.alltoall(grad_outputs)
+        gx = xp.stack(gxs).sum(axis=0)
+        stop = time.time()
+        # if self.comm.rank == 0:
+        #     print("Layer", self.index, "Time for Backward AllReduce ", stop - start)
+
+        # convert back
+        if numpy.float16 == grad_dtype:
+            gx = gx.astype(grad_dtype)
+        return gx,
 
 
 class SpatialAllGather(chainer.Function):
@@ -398,3 +449,30 @@ def scatter(comm, xs, root=0):
         return Scatter(comm, root)(*xs)
     else:
         return Scatter(comm, root)()
+
+
+def allgather(comm, index, x):
+    """Slightly modified to allow index for layers
+    Differentiable all-gather communication between workers.
+
+    This function invokes gather communications among processes specified
+    by the communicator. Backward will be invoked as well as the ordinary
+    chainer functions, where gradients are reduced to each process.
+
+    The received array will be on the current CUDA device on the invoking
+    process if ``x`` is on GPU. Please be aware that the current CUDA device
+    is intended one.
+    (``https://docs-cupy.chainer.org/en/stable/tutorial/basic.html#current-device``)
+
+    Args:
+        comm: ChainerMN communicator.
+        :param index:
+        x (chainer.Variables): Variables to send.
+
+    Returns:
+        ys (list of chainer.Variables): Received variables.
+
+    """
+    chainer.utils.experimental('chainermn.functions.all_gather')
+
+    return AllGather(comm, index)(x)

@@ -1,5 +1,6 @@
 import chainer
 import copy
+import time
 
 
 class _MultiNodeOptimizer(object):
@@ -25,12 +26,16 @@ class _MultiNodeOptimizer(object):
                 target.zerograds()
             loss.backward(loss_scale=self.actual_optimizer._loss_scale)
             del loss
-
+        # measure communication time
+        start = time.time()
         if self.is_changed(target):
             self.communicator.bcast_data(target)
         else:
             self.communicator.multi_node_mean_grad(target, self.zero_fill)
             self.actual_optimizer.update(None, *args, **kwds)
+        stop = time.time()
+        # if self.communicator.rank == 0:
+        #     print("Spatial Allreduce Time", stop -start)
 
     def is_changed(self, target):
         previous_params = self.target_params
