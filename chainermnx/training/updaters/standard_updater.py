@@ -288,8 +288,8 @@ to a given device, specify the 'input_device' argument instead and leave the \
         compute_time_file = open(os.path.join(self.out, "compute_times.log"), "a")
         io_time_file = open(os.path.join(self.out, "io_times.log"), "a")
         if self.comm.rank == 0:
-            print("{:.6f}".format(compute_time),  file=compute_time_file)
-            print("{:.6f}".format(io_time), file=io_time_file)
+            print("{:.10f}".format(compute_time),  file=compute_time_file)
+            print("{:.10f}".format(io_time), file=io_time_file)
 
     def serialize(self, serializer):
         """Serializes the current state of the updater object."""

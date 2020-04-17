@@ -7,13 +7,42 @@ from chainermn.communicators import _memory_utility
 from chainermnx.communicators import channel_mpi_communicator_base
 from chainermn import nccl
 import time
+import os
+
+
+from chainermn.communicators import _communication_utility
+from chainermn.communicators import _memory_utility
+from chainermnx.communicators import channel_mpi_communicator_base
+from chainermnx.communicators.channel_mpi_communicator_base import  _MessageType, _check_dtype, _check_dtypes_are_same, _get_mpi_type, _cnt_to_dsp
+
 
 import numpy as np
+import cupy as cp
+
+
+def _get_nccl_dtype_size(input):
+    if input.dtype == np.float32:
+        nccl_dtype = nccl.NCCL_FLOAT32
+        nccl_size = input.size
+    elif input.dtype == np.float64:
+        nccl_dtype = nccl.NCCL_FLOAT64
+        nccl_size = input.size
+    elif input.dtype == np.complex64:
+        nccl_dtype = nccl.NCCL_FLOAT32
+        nccl_size = input.size * 2
+    elif input.dtype == np.complex128:
+        nccl_dtype = nccl.NCCL_FLOAT64
+        nccl_size = input.size * 2
+    else:
+        raise ValueError(
+            'dtype not supported, got {dtype}.'.format(dtype=input.dtype))
+
+    return nccl_dtype, nccl_size
 
 
 class ChannelNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase):
 
-    def __init__(self, mpi_comm):
+    def __init__(self, out, mpi_comm):
         super(ChannelNcclCommunicator, self).__init__(mpi_comm)
         if not nccl._available:
             raise RuntimeError(
@@ -33,10 +62,16 @@ class ChannelNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase)
         # initialization. Therefore, we have to initialize NCCL communicators
         # after users set the devices to use.
         self.nccl_comm = None
+        self.out = out
 
         self.gpu_tmp_buffer = _memory_utility.DeviceMemory()
         self.gpu_buffer_a = _memory_utility.DeviceMemory()
         self.gpu_buffer_b = _memory_utility.DeviceMemory()
+
+        # Add here for dumping timers
+
+        self.allreduce_time_file = open(os.path.join(self.out, "allreduce_times.log"), "a")
+        self.allgather_time_file = open(os.path.join(self.out, "allgather_times.log"), "a")
 
         with self.config_scope():
             self.allreduce_grad_dtype = None
@@ -178,15 +213,9 @@ class ChannelNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase)
             stream = chainer.cuda.Stream.null
         self._init_comms()
         type_id = _communication_utility._get_nccl_type_id(dtype)
-
-        # Code to measure communication time
-        t1 = time.time()
         self.nccl_comm.allReduce(sendbuf.ptr(),
                                  recvbuf.ptr(), n_elems,
                                  type_id, nccl.NCCL_SUM, stream.ptr)
-        t2 = time.time()
-        comm_time = t2 - t1
-        # print("Communication time :  ",  "{:.10f}".format(comm_time))
         div_by_size = chainer.cuda.elementwise(
             '',
             '{} x'.format(dtype.name),
@@ -199,35 +228,50 @@ class ChannelNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase)
             stream.synchronize()
             self._ensure_all_finite(recvbuf.array(n_elems, dtype=dtype))
 
-    def channel_allreduce(self, x):
-        # To perform allreduce using NCCL. _multi_node_mean_nccl is a protected method so use this method to return it
-        self._init_comms()
+    def nccl_allgather(self, x, comm):
+        msgtype = _MessageType(x)
+        nccl_dtype, nccl_size = _get_nccl_dtype_size(x)
+        xp = chainer.backend.get_array_module(x)
+        shapes = []
+        for i in range(comm.size):
+            shapes.append(msgtype.shapes[0])
 
-        gpu_buffer_n_elems = x.size * 2
-        gpu_buffer_size = x.dtype.itemsize * gpu_buffer_n_elems
+        rlens = [chainer.utils.size_of_shape(s) for s in shapes]
+        rbuf = xp.empty(nccl_size * comm.size, dtype=msgtype.dtype)
+        if xp is not np:
+            chainer.cuda.Stream.null.synchronize()
 
-        gpu_buffer_a = _memory_utility.DeviceMemory()
-        gpu_buffer_b = _memory_utility.DeviceMemory()
+        start = time.time()
+        self.nccl_comm.allGather(
+            x.data.ptr,
+            rbuf.data.ptr,
+            nccl_size,
+            nccl_dtype,
+            cp.cuda.Stream.null.ptr
+        )
+        stop = time.time()
+        # Comment this line when not dumping times
+        if comm.rank == 0:
+            print("{:.10f}".format(stop-start), file=self.allgather_time_file)
 
-        gpu_buffer_a.assign(gpu_buffer_size)
-        gpu_buffer_b.assign(gpu_buffer_size)
+        ys = [rbuf[i:i + l].reshape(s)
+              for i, l, s in zip(_cnt_to_dsp(rlens), rlens, shapes)]
 
-        type_id = _communication_utility._get_nccl_type_id(x.dtype)
+        return ys
 
+    def nccl_allreduce(self, input, comm):
+        nccl_dtype, nccl_size = _get_nccl_dtype_size(input)
+        start = time.time()
+        self.nccl_comm.allReduce(input.data.ptr,
+                            input.data.ptr,
+                            nccl_size, nccl_dtype,
+                            nccl.NCCL_SUM,
+                            cp.cuda.Stream.null.ptr)
+        stop = time.time()
 
-        stream = chainer.cuda.Stream.null
+        if comm.rank == 0:
+            print("{:.10f}".format(stop - start), file=self.allreduce_time_file)
 
-        self.nccl_comm.allReduce(gpu_buffer_a.ptr(), gpu_buffer_b.ptr(), gpu_buffer_n_elems, type_id,  nccl.NCCL_SUM, stream.ptr)
-
-        gpu_buffer_a_array = gpu_buffer_b.array(
-            gpu_buffer_n_elems,
-            dtype=x.dtype)
-
-
-        print("Passed here-----------------------------")
-
-
-        return 0
-
+        return
 
 

@@ -6,7 +6,7 @@ from chainermn.communicators.communicator_base import CommunicatorBase  # NOQA
 
 
 def create_communicator(
-        communicator_name='pure_nccl', mpi_comm=None, **kwargs):
+        communicator_name='pure_nccl', out="results", mpi_comm=None, **kwargs):
     """Create a ChainerMN communicator.
 
     Different communicators provide different approaches of communication, so
@@ -133,7 +133,7 @@ def create_communicator(
     elif communicator_name == 'channel_nccl':
         from chainermnx.communicators.channel_nccl_communicator  \
             import ChannelNcclCommunicator
-        comm = ChannelNcclCommunicator(mpi_comm=mpi_comm)
+        comm = ChannelNcclCommunicator(out=out, mpi_comm=mpi_comm)
         comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
     elif communicator_name == 'dummy':
         from chainermnx.communicators.dummy_communicator \

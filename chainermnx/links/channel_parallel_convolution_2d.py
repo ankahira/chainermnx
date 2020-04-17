@@ -28,6 +28,7 @@ class ChannelParallelConvolution2D(chainer.links.Convolution2D):
         # Each process gets C/P channels
         x = x[:, self._channel_indices, :, :]
         y = super(ChannelParallelConvolution2D, self).__call__(x)
+        print("Shape before allreduce", y.shape)
         ys = allreduce(self.comm, y, self.index)
 
         return ys
