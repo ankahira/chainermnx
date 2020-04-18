@@ -7,26 +7,20 @@ import numpy
 class AllGather(chainer.Function):
     """Collective all-gather communication."""
 
-    def __init__(self, comm, index):
+    def __init__(self, comm):
         chainer.utils.experimental('chainermn.functions.AllGather')
         self.comm = comm
-        self.index = index
 
     def forward(self, inputs):
-
-        # Note that there is no stacking being done here
-        # That should give some idea for channel case.
         x, = inputs
         x_dtype = x.dtype
 
         # convert to float32 for communication
         if numpy.float16 == x_dtype:
             x = x.astype(numpy.float32)
-        start = time.time()
+
         ret = self.comm.allgather(x)
-        stop = time.time()
-        # if self.comm.rank == 0:
-        #     print("Layer ", self.index, "Time for Forward AllGather ", stop -start)
+
         # convert back
         if numpy.float16 == x_dtype:
             ret = tuple([item.astype(x_dtype) for item in ret])
@@ -35,20 +29,20 @@ class AllGather(chainer.Function):
     def backward(self, inputs, grad_outputs):
         xp = backend.get_array_module(*inputs)
         grad_dtype = grad_outputs[0].dtype
+        if self.comm.rank == 0:
+            print("Grad outputs", grad_outputs[3].shape, len(grad_outputs))
 
         # convert to float32 for communication
         if numpy.float16 == grad_dtype:
             grad_outputs = tuple([item.astype(numpy.float32)
                                   for item in grad_outputs])
 
-        # start = time.time()
-        # print(type(grad_outputs), len(grad_outputs), self.comm.size, grad_outputs[2].shape)
         gxs = self.comm.alltoall(grad_outputs)
+        if self.comm.rank == 0:
+            print("After all to all ", len(gxs), gxs[0].shape)
         gx = xp.stack(gxs).sum(axis=0)
-        stop = time.time()
-        # if self.comm.rank == 0:
-        #     print("Layer", self.index, "Time for Backward AllReduce ", stop - start)
-
+        if self.comm.rank == 0:
+            print("After stack", gx.shape)
         # convert back
         if numpy.float16 == grad_dtype:
             gx = gx.astype(grad_dtype)
@@ -451,7 +445,7 @@ def scatter(comm, xs, root=0):
         return Scatter(comm, root)()
 
 
-def allgather(comm, index, x):
+def allgather(comm, x):
     """Slightly modified to allow index for layers
     Differentiable all-gather communication between workers.
 
@@ -475,4 +469,4 @@ def allgather(comm, index, x):
     """
     chainer.utils.experimental('chainermn.functions.all_gather')
 
-    return AllGather(comm, index)(x)
+    return AllGather(comm)(x)

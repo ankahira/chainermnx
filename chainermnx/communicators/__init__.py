@@ -135,6 +135,13 @@ def create_communicator(
             import ChannelNcclCommunicator
         comm = ChannelNcclCommunicator(out=out, mpi_comm=mpi_comm)
         comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
+
+    # This line  is added to facilitate filter parallelism
+    elif communicator_name == 'filter_nccl':
+        from chainermnx.communicators.filter_nccl_communicator  \
+            import FilterNcclCommunicator
+        comm = FilterNcclCommunicator(out=out, mpi_comm=mpi_comm)
+        comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
     elif communicator_name == 'dummy':
         from chainermnx.communicators.dummy_communicator \
             import DummyCommunicator

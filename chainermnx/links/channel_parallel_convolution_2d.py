@@ -7,9 +7,8 @@ import time
 
 
 class ChannelParallelConvolution2D(chainer.links.Convolution2D):
-    def __init__(self, comm, index, in_channels, out_channels, *args, **kwargs):
+    def __init__(self, comm, in_channels, out_channels, *args, **kwargs):
         self.comm = comm
-        self.index = index
         self.out_channels = out_channels
         self.in_channels = in_channels
         start = time.time()
@@ -29,7 +28,7 @@ class ChannelParallelConvolution2D(chainer.links.Convolution2D):
         x = x[:, self._channel_indices, :, :]
         y = super(ChannelParallelConvolution2D, self).__call__(x)
         print("Shape before allreduce", y.shape)
-        ys = allreduce(self.comm, y, self.index)
+        ys = allreduce(self.comm, y)
 
         return ys
 

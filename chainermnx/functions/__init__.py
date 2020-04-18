@@ -9,6 +9,7 @@ from chainermnx.functions.checker import checker
 from chainermnx.functions.collective_communication import spatialallgather
 from chainermnx.functions.halo_exchange_3d import halo_exchange_3d
 from chainermnx.functions.split import split
+from chainermnx.functions.communication import filter_allgather
 
 
 
