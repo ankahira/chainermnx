@@ -12,7 +12,7 @@ import os
 
 from chainermn.communicators import _communication_utility
 from chainermn.communicators import _memory_utility
-from chainermnx.communicators import channel_mpi_communicator_base
+from chainermnx.communicators import mpi_communicator_base
 from chainermnx.communicators.channel_mpi_communicator_base import  _MessageType, _check_dtype, _check_dtypes_are_same, _get_mpi_type, _cnt_to_dsp
 
 
@@ -40,7 +40,7 @@ def _get_nccl_dtype_size(input):
     return nccl_dtype, nccl_size
 
 
-class ChannelNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase):
+class ChannelNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
 
     def __init__(self, out, mpi_comm):
         super(ChannelNcclCommunicator, self).__init__(mpi_comm)

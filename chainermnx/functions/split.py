@@ -1,6 +1,7 @@
 from abc import ABC
 from chainer import FunctionNode
 import cupy as cp
+import time
 
 
 class Split(FunctionNode, ABC):

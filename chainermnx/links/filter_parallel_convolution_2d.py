@@ -19,9 +19,9 @@ class FilterParallelConvolution2D(chainer.links.Convolution2D):
 
     def __call__(self, x):
         y = super(FilterParallelConvolution2D, self).__call__(x)
-        ys = chainermn.functions.allgather(self.comm, y) # The mpi allgather
-        # ys = FX.allgather(self.comm, y) # MPI allgther but from chainermnx for debuging
-        # ys = FX.filter_allgather(self.comm, y) # NCCL Allgather
+        # yys = chainermn.functions.allgather(self.comm, y) # The mpi allgather
+        # yys = FX.allgather(self.comm, y) # MPI allgther but from chainermnx for debuging
+        ys = FX.filter_allgather(self.comm, y)  # NCCL Allgather
         return F.concat(ys, axis=1)
 
 

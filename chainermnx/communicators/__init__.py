@@ -140,7 +140,7 @@ def create_communicator(
     elif communicator_name == 'filter_nccl':
         from chainermnx.communicators.filter_nccl_communicator  \
             import FilterNcclCommunicator
-        comm = FilterNcclCommunicator(out=out, mpi_comm=mpi_comm)
+        comm = FilterNcclCommunicator(mpi_comm=mpi_comm, out=out)
         comm.set_config('allreduce_grad_dtype', allreduce_grad_dtype)
     elif communicator_name == 'dummy':
         from chainermnx.communicators.dummy_communicator \

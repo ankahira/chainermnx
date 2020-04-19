@@ -12,7 +12,7 @@ import cupy as cp
 
 from chainermn.communicators import _communication_utility
 from chainermn.communicators import _memory_utility
-from chainermnx.communicators import channel_mpi_communicator_base
+from chainermnx.communicators import mpi_communicator_base
 from chainermnx.communicators.channel_mpi_communicator_base import  _MessageType, _check_dtype, _check_dtypes_are_same, _get_mpi_type, _cnt_to_dsp
 
 
@@ -36,9 +36,9 @@ def _get_nccl_dtype_size(input):
     return nccl_dtype, nccl_size
 
 
-class FilterNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase):
+class FilterNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
 
-    def __init__(self, out, mpi_comm):
+    def __init__(self,  mpi_comm, out="results"):
         super(FilterNcclCommunicator, self).__init__(mpi_comm)
         if not nccl._available:
             raise RuntimeError(
@@ -66,8 +66,8 @@ class FilterNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase):
 
         # Add here for dumping timers
 
-        self.allreduce_time_file = open(os.path.join(self.out, "allreduce_times.log"), "a")
-        self.allgather_time_file = open(os.path.join(self.out, "allgather_times.log"), "a")
+        # self.allreduce_time_file = open(os.path.join(self.out, "allreduce_times.log"), "a")
+        # self.allgather_time_file = open(os.path.join(self.out, "allgather_times.log"), "a")
 
         with self.config_scope():
             self.allreduce_grad_dtype = None
@@ -87,6 +87,9 @@ class FilterNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase):
         if self.nccl_comm is not None:
             return
         self.nccl_comm = _communication_utility.init_nccl_comm(self.mpi_comm)
+        # Add here for dumping timers
+        self.allreduce_time_file = open(os.path.join(self.out, "allreduce_times.log"), "a")
+        self.allgather_time_file = open(os.path.join(self.out, "allgather_times.log"), "a")
 
     def set_config(self, name, value=True, **kwargs):
         if name == 'allreduce_grad_dtype':
@@ -269,5 +272,8 @@ class FilterNcclCommunicator(channel_mpi_communicator_base.MpiCommunicatorBase):
             print("{:.10f}".format(stop - start), file=self.allreduce_time_file)
 
         return
+
+    def split(self, color, key):
+        return self.__class__(mpi_comm=self.mpi_comm.Split(color, key), out=self.out)
 
 

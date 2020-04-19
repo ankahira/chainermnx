@@ -39,7 +39,7 @@ class _MultiNodeOptimizer(object):
 
         allreduce_time = stop-start
 
-        allreduce_time_file = open(os.path.join(self.out, "allreduce_times.log"), "a")
+        allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
         if self.communicator.rank == 0:
             print("{:.6f}".format(allreduce_time), file=allreduce_time_file)
 
@@ -163,7 +163,7 @@ def create_multi_node_optimizer(actual_optimizer, communicator, out="result",
 
     """Create a multi node optimizer from a Chainer optimizer.
     Added an ouput dir here for logging purposes.
-
+    Everything else is the default for chainer
 
     Args:
         actual_optimizer: Chainer optimizer

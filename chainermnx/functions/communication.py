@@ -2,6 +2,8 @@ from abc import ABC
 import chainer
 import cupy as cp
 
+import time
+
 
 class AllReduce(chainer.Function, ABC):
     # this was created to faciliate the allreduce/allgather required in the case of channel parallelism
@@ -9,6 +11,7 @@ class AllReduce(chainer.Function, ABC):
         self.comm = comm
 
     def forward(self, inputs):
+        start = time.time()
         x, = inputs
         # xs = cp.empty(x.shape, dtype=cp.float32) # temporary receive buffer. Use when required
         # nccl_allreduce(x, self.comm)
