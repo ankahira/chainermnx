@@ -1,5 +1,6 @@
 import mpi4py
 import numpy
+import time
 
 import chainer
 import chainer.backends
@@ -766,8 +767,10 @@ class MpiCommunicatorBase(communicator_base.CommunicatorBase):
         else:
             array_b32 = recvbuf
         buffer_b = _memory_utility.array_to_buffer_object(array_b32)
-
+        start = time.time()
         self.mpi_comm.Allreduce(buffer_a, buffer_b)
+        stop = time.time()
+        print(stop-start)
 
         if is_float16:
             recvbuf[...] = array_b32.astype(numpy.float16)

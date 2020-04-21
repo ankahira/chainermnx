@@ -10,7 +10,7 @@ import numpy as np
 
 class SpatialNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
 
-    def __init__(self, mpi_comm):
+    def __init__(self, mpi_comm, out="results"):
         super(SpatialNcclCommunicator, self).__init__(mpi_comm)
         if not nccl._available:
             raise RuntimeError(
@@ -30,6 +30,7 @@ class SpatialNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
         # initialization. Therefore, we have to initialize NCCL communicators
         # after users set the devices to use.
         self.nccl_comm = None
+        self.out = out
 
         self.gpu_tmp_buffer = _memory_utility.DeviceMemory()
         self.gpu_buffer_a = _memory_utility.DeviceMemory()

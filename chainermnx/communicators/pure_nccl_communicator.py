@@ -181,12 +181,14 @@ class PureNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
 
         # Code to measure communication time
         t1 = time.time()
+
         self.nccl_comm.allReduce(sendbuf.ptr(),
                                  recvbuf.ptr(), n_elems,
                                  type_id, nccl.NCCL_SUM, stream.ptr)
         t2 = time.time()
         comm_time = t2 - t1
-        # print("Communication time :  ",  "{:.10f}".format(comm_time))
+        # print(comm_time)
+
         div_by_size = chainer.cuda.elementwise(
             '',
             '{} x'.format(dtype.name),

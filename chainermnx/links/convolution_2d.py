@@ -9,7 +9,7 @@ import cupy as cp
 
 
 class Convolution2D(link.Link):
-    def __init__(self, comm, index, in_channels, out_channels, ksize=None, stride=1, pad=0,
+    def __init__(self, comm, out, index, in_channels, out_channels, ksize=None, stride=1, pad=0,
                  nobias=False, initialW=None, initial_bias=None, **kwargs):
         super(Convolution2D, self).__init__()
 
@@ -42,6 +42,7 @@ class Convolution2D(link.Link):
         # For halo exchange
         self.comm = comm
         self.index = index
+        self.out = out
         # Calculate the Halo exchange region that will be passed to the conv2d function.
 
         if (self.ksize % 2) == 0:
@@ -158,7 +159,8 @@ nobias=False, *, dilate=1, groups=1)
             _, c, _, _ = memory_layouts.get_semantic_shape(
                 x, assumed_layout=self.x_layout)
             self._initialize_params(c)
-        return convolution_2d.convolution_2d(self.comm, self.index, self.halo_size,
+        # why is this calling conv2d insttead of spatil_convd2d
+        return convolution_2d.convolution_2d(self.comm, self.out, self.index, self.halo_size,
                                         x, self.W, self.b, self.stride, self.pad, dilate=self.dilate,
                                         groups=self.groups)
 

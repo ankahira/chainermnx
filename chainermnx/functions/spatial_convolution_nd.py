@@ -1,3 +1,4 @@
+import os
 import numpy
 from six import moves
 
@@ -19,7 +20,7 @@ import time
 
 class SpatialConvolutionND(function_node.FunctionNode):
 
-    def __init__(self,  comm, index, halo_size, ndim, stride=1, pad=0, cover_all=False,
+    def __init__(self, comm, out, index, halo_size, ndim, stride=1, pad=0, cover_all=False,
                  dilate=1, groups=1):
         self.ndim = ndim
         self.stride = conv_nd.as_tuple(stride, ndim)
@@ -28,10 +29,12 @@ class SpatialConvolutionND(function_node.FunctionNode):
         self.dilate = conv_nd.as_tuple(dilate, ndim)
         self.groups = groups
         self.comm = comm
+        self.out = out
         self.index = index
         self.halo_size = halo_size
         # Added this line to get the pad width. Easier than changing all code
         self.pw = self.pad[0]
+        self.backward_halo_exchange_time_file = open(os.path.join(self.out, "backward_halo_exchange_time_file.log"), "a")
 
     def check_type_forward(self, in_types):
         n_in = in_types.size()
@@ -188,7 +191,6 @@ class SpatialConvolutionND(function_node.FunctionNode):
         self.retain_inputs((0, 1))  # retain only x and W
         x, W = inputs[:2]
         b = inputs[2] if len(inputs) == 3 else None
-
         xp = backend.get_array_module(*inputs)
         if xp is numpy:
             return self._forward_xp(x, W, b, numpy)
@@ -219,6 +221,8 @@ class SpatialConvolutionND(function_node.FunctionNode):
         if self.halo_size != 0:
             # -----------------------------------------start halo exchange--------------------------------------3
             # Pad the top and bottom
+            # if self.comm.rank ==0:
+            #     print("starting backward halo exchange at index", self.index)
             if self.pw != 0:
                 if self.comm.rank == 0:
                     # Pad the top
@@ -254,7 +258,7 @@ class SpatialConvolutionND(function_node.FunctionNode):
         stop = time.time()
 
         if self.comm.rank == 0:
-            print("Layer ", self.index, "Backward Halo Exchange Time ", stop - start)
+            print("{:.10f}".format(stop - start), file=self.backward_halo_exchange_time_file)
 
         ret = []
         if 0 in indexes:
@@ -487,7 +491,7 @@ class ConvolutionNDGradW(function_node.FunctionNode):
         return ret
 
 
-def spatial_convolution_nd(comm, index, halo_size, x, W, b=None, stride=1, pad=0, cover_all=False,
+def spatial_convolution_nd(comm, out, index, halo_size, x, W, b=None, stride=1, pad=0, cover_all=False,
                    dilate=1, groups=1):
     """N-dimensional convolution function.
 
@@ -623,8 +627,8 @@ astype(np.float32)
 
     """
     ndim = len(x.shape[2:])
-    fnode = SpatialConvolutionND(comm, index, halo_size,
-        ndim, stride, pad, cover_all, dilate=dilate, groups=groups)
+    fnode = SpatialConvolutionND(comm=comm, out=out, index=index, halo_size=halo_size,
+        ndim=ndim, stride=stride, pad=pad, cover_all=cover_all, dilate=dilate, groups=groups)
     args = (x, W) if b is None else (x, W, b)
     y, = fnode.apply(args)
     return y
@@ -649,7 +653,7 @@ def convolution_1d(x, W, b=None, stride=1, pad=0, cover_all=False,
     return spatial_convolution_nd(x, W, b, stride, pad, cover_all, dilate, groups)
 
 
-def spatial_convolution_3d(comm, index, halo_size, x, W, b=None, stride=1, pad=0, cover_all=False,
+def spatial_convolution_3d(comm, out, index, halo_size, x, W, b=None, stride=1, pad=0, cover_all=False,
                    dilate=1, groups=1):
     """3-dimensional convolution function.
 
@@ -665,4 +669,5 @@ def spatial_convolution_3d(comm, index, halo_size, x, W, b=None, stride=1, pad=0
             'The number of dimensions under channel dimension of the input '
             '\'x\' should be 3. But the actual ndim was {}.'.format(
                 len(x.shape[2:])))
-    return spatial_convolution_nd(comm, index, halo_size, x, W, b, stride, pad, cover_all, dilate, groups)
+
+    return spatial_convolution_nd(comm, out, index, halo_size, x, W, b, stride, pad, cover_all, dilate, groups)

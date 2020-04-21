@@ -2,6 +2,9 @@ import chainer
 import copy
 import time
 import os
+import cupy
+
+import torch
 
 
 class _MultiNodeOptimizer(object):
@@ -29,19 +32,20 @@ class _MultiNodeOptimizer(object):
             loss.backward(loss_scale=self.actual_optimizer._loss_scale)
             del loss
 
-        start = time.time()
         if self.is_changed(target):
             self.communicator.bcast_data(target)
         else:
+            torch.cuda.synchronize()
+            torch.cuda.synchronize()
+            start = time.perf_counter()
             self.communicator.multi_node_mean_grad(target, self.zero_fill)
+            torch.cuda.synchronize()
+            stop = time.perf_counter()
+            allreduce_time = stop - start
+            allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
+            if self.communicator.rank == 0:
+                print("{:.10f}".format(allreduce_time), file=allreduce_time_file)
             self.actual_optimizer.update(None, *args, **kwds)
-        stop = time.time()
-
-        allreduce_time = stop-start
-
-        allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
-        if self.communicator.rank == 0:
-            print("{:.6f}".format(allreduce_time), file=allreduce_time_file)
 
     def is_changed(self, target):
         previous_params = self.target_params

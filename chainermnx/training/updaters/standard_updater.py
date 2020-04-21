@@ -2,6 +2,7 @@ import warnings
 import os
 import six
 import time
+import torch
 
 import chainer
 from chainer.backends import cuda
@@ -256,8 +257,10 @@ to a given device, specify the 'input_device' argument instead and leave the \
 
     def update_core(self):
         # IO time measurements
-        t1 = time.time()
 
+        torch.cuda.synchronize()
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
         iterator = self._iterators['main']
         batch = iterator.next()
         in_arrays = convert._call_converter(
@@ -265,21 +268,21 @@ to a given device, specify the 'input_device' argument instead and leave the \
 
         optimizer = self._optimizers['main']
         loss_func = self.loss_func or optimizer.target
+        torch.cuda.synchronize()
+        t2 = time.perf_counter()
 
-        t2 = time.time()
-
+        torch.cuda.synchronize()
         if isinstance(in_arrays, tuple):
             optimizer.update(loss_func, *in_arrays)
         elif isinstance(in_arrays, dict):
             optimizer.update(loss_func, **in_arrays)
         else:
             optimizer.update(loss_func, in_arrays)
+        torch.cuda.synchronize()
+        t3 = time.perf_counter()
 
         if self.auto_new_epoch and iterator.is_new_epoch:
             optimizer.new_epoch(auto=True)
-
-        t3 = time.time()
-
         io_time = t2-t1
         compute_time = t3 - t2
 

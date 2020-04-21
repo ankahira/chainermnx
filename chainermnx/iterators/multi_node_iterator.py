@@ -158,7 +158,10 @@ class _MultiNodeIteratorSlave(chainer.dataset.iterator.Iterator):
         if is_paired_dataset:
             xs = self.communicator.bcast(None, root=self.rank_master)
             ys = self.communicator.bcast(None, root=self.rank_master)
-            return list(zip(xs, ys.astype(numpy.int32)))
+
+            ## Why is it forcing y values to be int
+            # return list(zip(xs, ys.astype(numpy.int32)))
+            return list(zip(xs, ys.astype(numpy.float32)))
         else:
             batch = self.communicator.bcast(None, root=self.rank_master)
             return batch.tolist()
@@ -245,6 +248,7 @@ def create_multi_node_iterator(
     """
     chainer.utils.experimental(
         'chainermn.iterators.create_multi_node_iterator')
+
     if communicator.rank == rank_master:
         return _MultiNodeIteratorMaster(
             actual_iterator, communicator, rank_master)

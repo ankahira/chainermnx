@@ -1,10 +1,13 @@
 import chainer
 import copy
+import time
+import os
+import torch
 
 
 class _HybridMultiNodeOptimizer(object):
 
-    def __init__(self, actual_optimizer, global_communicator, local_communicator, zero_fill):
+    def __init__(self, actual_optimizer, global_communicator, local_communicator, out, zero_fill):
 
         """
 
@@ -26,6 +29,7 @@ class _HybridMultiNodeOptimizer(object):
             'target_params', [])
         super(_HybridMultiNodeOptimizer, self).__setattr__(
             'zero_fill', zero_fill)
+        self.out = out
 
     def update(self, lossfun=None, *args, **kwds):
         target = self.target
@@ -38,6 +42,7 @@ class _HybridMultiNodeOptimizer(object):
                 target.zerograds()
             loss.backward(loss_scale=self.actual_optimizer._loss_scale)
             del loss
+
         if self.is_changed(target):
             self.global_communicator.bcast_data(target)
         else:
@@ -46,11 +51,17 @@ class _HybridMultiNodeOptimizer(object):
             However the local all reduce is the modified all reduce such that it doesnt take the sum ie like spatial 
             
             """
-
+            torch.cuda.synchronize()
+            torch.cuda.synchronize()
+            start = time.perf_counter()
             self.local_communicator.intra_node_mean_grad(target, self.zero_fill)
-
             self.global_communicator.multi_node_mean_grad(target, self.zero_fill)
-
+            torch.cuda.synchronize()
+            stop = time.perf_counter()
+            allreduce_time = stop - start
+            allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
+            if self.communicator.rank == 0:
+                print("{:.10f}".format(allreduce_time), file=allreduce_time_file)
             self.actual_optimizer.update(None, *args, **kwds)
 
     def is_changed(self, target):
@@ -167,7 +178,7 @@ class _DoubleBufferingOptimizer(object):
         setattr(self.actual_optimizer, attr_name, value)
 
 
-def create_hybrid_multi_node_optimizer(actual_optimizer, global_communicator, local_communicator,
+def create_hybrid_multi_node_optimizer(actual_optimizer, global_communicator, local_communicator, out="result",
                                        double_buffering=False, zero_fill=True):
     """Create a Hybrid multi node optimizer from a Chainer optimizer.
     This function is modified from the origal multinode optimiser so as to perform a a sum all reduce on local
@@ -193,4 +204,6 @@ def create_hybrid_multi_node_optimizer(actual_optimizer, global_communicator, lo
             raise ValueError(
                 'This communicator does not support double buffering.')
         return _DoubleBufferingOptimizer(actual_optimizer, global_communicator, zero_fill)
-    return _HybridMultiNodeOptimizer(actual_optimizer, global_communicator, local_communicator, zero_fill)
+    return _HybridMultiNodeOptimizer(actual_optimizer=actual_optimizer, global_communicator=global_communicator,
+                                     local_communicator=local_communicator,
+                                     out=out, zero_fill=zero_fill)

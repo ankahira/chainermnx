@@ -2,14 +2,17 @@ from abc import ABC
 from chainer import FunctionNode
 import cupy as cp
 import time
+import os
 
 
 class HaloExchange(FunctionNode, ABC):
-    def __init__(self, comm, k_size, index, pad):
+    def __init__(self, comm, k_size, index, pad, out):
         self.comm = comm
         self.index = index
         self.k_size = k_size
         self.pad = pad
+        self.out = out
+        self.forward_halo_exchange_time_file = open(os.path.join(self.out, "forward_halo_exchange_time.log"), "a")
         if (self.k_size % 2) == 0:
             self.halo_size = self.k_size // 2
         else:
@@ -24,6 +27,7 @@ class HaloExchange(FunctionNode, ABC):
         elif self.halo_size == 0:
             return x,
         else:
+            start = time.time()
             # pad the top and bottom part
             # in the case where there is padding, removing the halo region is done the same since the pad is equal to
             # halo regions . regions takes place in all ranks
@@ -57,8 +61,8 @@ class HaloExchange(FunctionNode, ABC):
                 received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
                 x = cp.concatenate((x, received_halo_region), axis=-2)
         stop = time.time()
-        # if self.comm.rank == 0:
-        #     print("Layer ", self.index, "Forward HaloExchange Time ", stop-start)
+        if self.comm.rank == 0:
+            print("{:.10f}".format(stop - start), file=self.forward_halo_exchange_time_file)
         return x,
 
     def backward(self, target_input_indexes, grad_outputs):
@@ -85,8 +89,8 @@ class HaloExchange(FunctionNode, ABC):
         return gy,
 
 
-def halo_exchange(comm, x, k_size, index, pad):
-    func = HaloExchange(comm=comm, k_size=k_size, index=index, pad=pad)
+def halo_exchange(comm, x, k_size, index, pad, out):
+    func = HaloExchange(comm=comm, k_size=k_size, index=index, pad=pad, out=out)
     return func.apply((x,))[0]
 
 

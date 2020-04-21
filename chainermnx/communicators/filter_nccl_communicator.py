@@ -9,6 +9,8 @@ from chainermn import nccl
 import numpy as np
 import cupy as cp
 
+import torch
+
 
 from chainermn.communicators import _communication_utility
 from chainermn.communicators import _memory_utility
@@ -240,7 +242,9 @@ class FilterNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
         if xp is not np:
             chainer.cuda.Stream.null.synchronize()
 
-        start = time.time()
+        torch.cuda.synchronize()
+        torch.cuda.synchronize()
+        start = time.perf_counter()
         self.nccl_comm.allGather(
             x.data.ptr,
             rbuf.data.ptr,
@@ -248,7 +252,9 @@ class FilterNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
             nccl_dtype,
             cp.cuda.Stream.null.ptr
         )
-        stop = time.time()
+        torch.cuda.synchronize()
+        stop = time.perf_counter()
+        # stop = time.time()
         # Comment this line when not dumping times
         if comm.rank == 0:
             print("{:.10f}".format(stop-start), file=self.allgather_time_file)
@@ -260,13 +266,17 @@ class FilterNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
 
     def nccl_allreduce(self, input, comm):
         nccl_dtype, nccl_size = _get_nccl_dtype_size(input)
-        start = time.time()
+        torch.cuda.synchronize()
+        torch.cuda.synchronize()
+        start = time.perf_counter()
         self.nccl_comm.allReduce(input.data.ptr,
                             input.data.ptr,
                             nccl_size, nccl_dtype,
                             nccl.NCCL_SUM,
                             cp.cuda.Stream.null.ptr)
-        stop = time.time()
+        # stop = time.time()
+        torch.cuda.synchronize()
+        stop = time.perf_counter()
 
         if comm.rank == 0:
             print("{:.10f}".format(stop - start), file=self.allreduce_time_file)

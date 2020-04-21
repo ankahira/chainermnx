@@ -1,4 +1,5 @@
 import sys
+import os
 import numpy
 import chainer
 from chainer import backend
@@ -50,7 +51,7 @@ class Convolution2DFunction(function_node.FunctionNode):
 
     _use_ideep = False
 
-    def __init__(self, comm, index, halo_size,  stride=1, pad=0, cover_all=False, **kwargs):
+    def __init__(self, comm, out, index, halo_size,  stride=1, pad=0, cover_all=False, **kwargs):
         dilate, groups = argument.parse_kwargs(
             kwargs, ('dilate', 1), ('groups', 1),
             deterministic='deterministic argument is not supported anymore. '
@@ -68,7 +69,9 @@ class Convolution2DFunction(function_node.FunctionNode):
         self.groups = groups
         self.comm = comm
         self.index = index
+        self.out = out
         self.halo_size = halo_size
+        self.backward_halo_exchange_time_file = open(os.path.join(self.out, "backward_halo_exchange_time_file.log"), "a")
 
         if self.dx < 1 or self.dy < 1:
             raise ValueError('Dilate should be positive, but {} is '
@@ -322,7 +325,7 @@ class Convolution2DFunction(function_node.FunctionNode):
             # -----------------------------------------End halo exchange--------------------------------------#
         stop = time.time()
         if self.comm.rank == 0:
-            print("Layer ", self.index, "Backward HaloExchange Time ", stop - start)
+            print("{:.10f}".format(stop - start), file=self.backward_halo_exchange_time_file)
 
         ret = []
         if 0 in indexes:
@@ -553,7 +556,7 @@ class Convolution2DGradW(function_node.FunctionNode):
         return ret
 
 
-def convolution_2d(comm, index, halo_size, x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
+def convolution_2d(comm, out, index, halo_size, x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
     """
     *** Modified version of conv2d to allow for halo exchange during back prop
 
@@ -694,7 +697,7 @@ cover_all=True)
         'Use chainer.using_config(\'cudnn_deterministic\', value) '
         'context where value is either `True` or `False`.')
 
-    fnode = Convolution2DFunction(comm, index, halo_size, stride, pad, cover_all, dilate=dilate,
+    fnode = Convolution2DFunction(comm, out, index, halo_size, stride, pad, cover_all, dilate=dilate,
                                   groups=groups)
     if b is None:
         args = x, W

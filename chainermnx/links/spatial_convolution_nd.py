@@ -104,9 +104,10 @@ class SpatialConvolutionND(link.Link):
 
     """
 
-    def __init__(self, comm, index,  ndim, in_channels, out_channels, ksize=None, stride=1,
+    def __init__(self, comm, out, index, ndim, in_channels, out_channels, ksize=None, stride=1,
                  pad=0, nobias=False, initialW=None, initial_bias=None,
                  cover_all=False, dilate=1, groups=1):
+
         super(SpatialConvolutionND, self).__init__()
 
         if ksize is None:
@@ -124,6 +125,7 @@ class SpatialConvolutionND(link.Link):
         # For halo exchange
         self.comm = comm
         self.index = index
+        self.out = out
         # Calculate the Halo exchange region that will be passed to the conv2d function.
 
         if (ksize % 2) == 0:
@@ -220,7 +222,7 @@ nobias=False, *, cover_all=False, dilate=1, groups=1)
         """
         if self.W.array is None:
             self._initialize_params(x.shape[1])
-        return spatial_convolution_nd.spatial_convolution_nd(self.comm, self.index, self.halo_size,
+        return spatial_convolution_nd.spatial_convolution_nd(self.comm, self.out, self.index, self.halo_size,
             x, self.W, self.b, self.stride, self.pad, cover_all=self.cover_all,
             dilate=self.dilate, groups=self.groups)
 
@@ -236,9 +238,10 @@ class SpatialConvolution3D(SpatialConvolutionND):
 
     """
 
-    def __init__(self, comm, index,  in_channels, out_channels, ksize, stride=1, pad=0,
+    def __init__(self, comm, out, index,  in_channels, out_channels, ksize, stride=1, pad=0,
                  nobias=False, initialW=None, initial_bias=None,
                  cover_all=False, dilate=1, groups=1):
-        super(SpatialConvolution3D, self).__init__(comm, index,
+
+        super(SpatialConvolution3D, self).__init__(comm, out, index,
             3, in_channels, out_channels, ksize, stride, pad, nobias, initialW,
             initial_bias, cover_all, dilate, groups)

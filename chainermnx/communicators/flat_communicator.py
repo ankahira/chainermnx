@@ -1,7 +1,8 @@
 import numpy as np
+import time
 
-from chainermn.communicators import _memory_utility
-from chainermn.communicators import mpi_communicator_base
+from chainermnx.communicators import _memory_utility
+from chainermnx.communicators import mpi_communicator_base
 
 
 class FlatCommunicator(mpi_communicator_base.MpiCommunicatorBase):

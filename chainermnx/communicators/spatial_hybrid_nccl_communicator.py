@@ -12,7 +12,7 @@ import numpy as np
 
 class SpatialHybridNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
 
-    def __init__(self, mpi_comm):
+    def __init__(self, mpi_comm, out):
         super(SpatialHybridNcclCommunicator, self).__init__(mpi_comm)
         if not nccl._available:
             raise RuntimeError(
@@ -32,6 +32,7 @@ class SpatialHybridNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
         # initialization. Therefore, we have to initialize NCCL communicators
         # after users set the devices to use.
         self.nccl_comm = None
+        self.out = out
 
         self.gpu_tmp_buffer = _memory_utility.DeviceMemory()
         self.gpu_buffer_a = _memory_utility.DeviceMemory()
@@ -276,3 +277,8 @@ class SpatialHybridNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
         if chainer.is_debug():
             stream.synchronize()
             self._ensure_all_finite(recvbuf.array(n_elems, dtype=dtype))
+
+    # We put init here to allow initialisation with output dir for logging.
+    def split(self, color, key):
+        return self.__class__(mpi_comm=self.mpi_comm.Split(color, key), out=self.out)
+

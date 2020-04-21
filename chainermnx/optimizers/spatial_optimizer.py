@@ -1,11 +1,13 @@
 import chainer
 import copy
 import time
+import os
+import torch
 
 
 class _MultiNodeOptimizer(object):
 
-    def __init__(self, actual_optimizer, communicator, zero_fill):
+    def __init__(self, actual_optimizer, communicator, out, zero_fill):
         super(_MultiNodeOptimizer, self).__setattr__(
             'communicator', communicator)
         super(_MultiNodeOptimizer, self).__setattr__(
@@ -14,6 +16,7 @@ class _MultiNodeOptimizer(object):
             'target_params', [])
         super(_MultiNodeOptimizer, self).__setattr__(
             'zero_fill', zero_fill)
+        self.out = out
 
     def update(self, lossfun=None, *args, **kwds):
         target = self.target
@@ -27,15 +30,21 @@ class _MultiNodeOptimizer(object):
             loss.backward(loss_scale=self.actual_optimizer._loss_scale)
             del loss
         # measure communication time
-        start = time.time()
+
         if self.is_changed(target):
             self.communicator.bcast_data(target)
         else:
+            torch.cuda.synchronize()
+            torch.cuda.synchronize()
+            start = time.perf_counter()
             self.communicator.multi_node_mean_grad(target, self.zero_fill)
+            torch.cuda.synchronize()
+            stop = time.perf_counter()
+            allreduce_time = stop - start
+            allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
+            if self.communicator.rank == 0:
+                print("{:.10f}".format(allreduce_time), file=allreduce_time_file)
             self.actual_optimizer.update(None, *args, **kwds)
-        stop = time.time()
-        # if self.communicator.rank == 0:
-        #     print("Spatial Allreduce Time", stop -start)
 
     def is_changed(self, target):
         previous_params = self.target_params
@@ -151,7 +160,7 @@ class _DoubleBufferingOptimizer(object):
         setattr(self.actual_optimizer, attr_name, value)
 
 
-def create_spatial_optimizer(actual_optimizer, communicator,
+def create_spatial_optimizer(actual_optimizer, communicator, out="result",
                                 double_buffering=False, zero_fill=True):
     """Create a multi node optimizer from a Chainer optimizer.
 
@@ -183,5 +192,5 @@ def create_spatial_optimizer(actual_optimizer, communicator,
                 'This communicator does not support double buffering.')
         return _DoubleBufferingOptimizer(actual_optimizer, communicator,
                                          zero_fill)
-    return _MultiNodeOptimizer(actual_optimizer, communicator,
+    return _MultiNodeOptimizer(actual_optimizer, communicator, out,
                                zero_fill)
