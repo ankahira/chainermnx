@@ -258,7 +258,8 @@ to a given device, specify the 'input_device' argument instead and leave the \
     def update_core(self):
         # IO time measurements
 
-        torch.cuda.synchronize()
+        ## By understanding the next iterator and converter, we can split the IO times and
+        # Maybe get better measurements
         torch.cuda.synchronize()
         t1 = time.perf_counter()
         iterator = self._iterators['main']

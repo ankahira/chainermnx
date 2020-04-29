@@ -239,10 +239,10 @@ class FilterNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
 
         rlens = [chainer.utils.size_of_shape(s) for s in shapes]
         rbuf = xp.empty(nccl_size * comm.size, dtype=msgtype.dtype)
+        cpu_start = time.time()
         if xp is not np:
             chainer.cuda.Stream.null.synchronize()
 
-        cpu_start = time.time()
         torch.cuda.synchronize()
         cpu_stop = time.time()
         start = time.perf_counter()

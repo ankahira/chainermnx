@@ -34,8 +34,9 @@ class _MultiNodeOptimizer(object):
         if self.is_changed(target):
             self.communicator.bcast_data(target)
         else:
+            cpu_start = time.time()
             torch.cuda.synchronize()
-            torch.cuda.synchronize()
+            cpu_stop = time.time()
             start = time.perf_counter()
             self.communicator.multi_node_mean_grad(target, self.zero_fill)
             torch.cuda.synchronize()
@@ -43,7 +44,7 @@ class _MultiNodeOptimizer(object):
             allreduce_time = stop - start
             allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
             if self.communicator.rank == 0:
-                print("{:.10f}".format(allreduce_time), file=allreduce_time_file)
+                print("{:.10f}".format(allreduce_time), "\t", "{:.10f}".format(cpu_stop - cpu_start), file=allreduce_time_file)
             self.actual_optimizer.update(None, *args, **kwds)
 
     def is_changed(self, target):

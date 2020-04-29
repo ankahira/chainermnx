@@ -48,20 +48,25 @@ class _HybridMultiNodeOptimizer(object):
         else:
             """
             This is a critical part of hybrid. First do an all reduce on each node then do an all reduce globally. 
-            However the local all reduce is the modified all reduce such that it doesnt take the sum ie like spatial 
-            
+            However the local all reduce is the modified all reduce such that it doesnt take the sum ie like spatial             
             """
+            cpu_start = time.time()
             torch.cuda.synchronize()
-            torch.cuda.synchronize()
+            cpu_stop = time.time()
             start = time.perf_counter()
+            #TODO
+            # there might be an issue with how you perform allreduce.
+            # Need to ensure that the correct group in global comm performs allreduce
+            # Maybe an if statement before the global allreduce such that only leading GPUs perform allreduce
+            # Aldo remember this is for both spatial hybrid and filter hybrid. Might need to change accordingly
             self.local_communicator.intra_node_mean_grad(target, self.zero_fill)
             self.global_communicator.multi_node_mean_grad(target, self.zero_fill)
             torch.cuda.synchronize()
             stop = time.perf_counter()
             allreduce_time = stop - start
             allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
-            if self.communicator.rank == 0:
-                print("{:.10f}".format(allreduce_time), file=allreduce_time_file)
+            if self.global_communicator.rank == 0:
+                print("{:.10f}".format(allreduce_time), "\t", "{:.10f}".format(cpu_stop - cpu_start), file=allreduce_time_file)
             self.actual_optimizer.update(None, *args, **kwds)
 
     def is_changed(self, target):
