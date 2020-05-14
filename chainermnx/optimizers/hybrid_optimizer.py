@@ -7,7 +7,7 @@ import torch
 
 class _HybridMultiNodeOptimizer(object):
 
-    def __init__(self, actual_optimizer, global_communicator, local_communicator, out, zero_fill):
+    def __init__(self, actual_optimizer, original_communicator, global_communicator, local_communicator, out, zero_fill):
 
         """
 
@@ -19,6 +19,8 @@ class _HybridMultiNodeOptimizer(object):
         :param local_communicator:
         :param zero_fill:
         """
+        super(_HybridMultiNodeOptimizer, self).__setattr__(
+            'original_communicator', original_communicator)
         super(_HybridMultiNodeOptimizer, self).__setattr__(
             'global_communicator', global_communicator)
         super(_HybridMultiNodeOptimizer, self).__setattr__(
@@ -50,23 +52,32 @@ class _HybridMultiNodeOptimizer(object):
             This is a critical part of hybrid. First do an all reduce on each node then do an all reduce globally. 
             However the local all reduce is the modified all reduce such that it doesnt take the sum ie like spatial             
             """
-            cpu_start = time.time()
-            torch.cuda.synchronize()
-            cpu_stop = time.time()
-            start = time.perf_counter()
-            #TODO
+            # TODO
             # there might be an issue with how you perform allreduce.
             # Need to ensure that the correct group in global comm performs allreduce
             # Maybe an if statement before the global allreduce such that only leading GPUs perform allreduce
             # Aldo remember this is for both spatial hybrid and filter hybrid. Might need to change accordingly
+            cpu_start = time.time()
+            torch.cuda.synchronize()
+            cpu_stop = time.time()
+            start = time.perf_counter()
             self.local_communicator.intra_node_mean_grad(target, self.zero_fill)
-            self.global_communicator.multi_node_mean_grad(target, self.zero_fill)
             torch.cuda.synchronize()
             stop = time.perf_counter()
-            allreduce_time = stop - start
+            local_allreduce_time = stop - start
+
+            torch.cuda.synchronize()
+            start = time.perf_counter()
+            if self.local_communicator.rank == 0:
+                self.global_communicator.multi_node_mean_grad(target, self.zero_fill)
+            torch.cuda.synchronize()
+            stop = time.perf_counter()
+            global_allreduce_time = stop - start
             allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
-            if self.global_communicator.rank == 0:
-                print("{:.10f}".format(allreduce_time), "\t", "{:.10f}".format(cpu_stop - cpu_start), file=allreduce_time_file)
+            # Find a way to print with just one rank .
+            if self.original_communicator.rank == 0:
+                print("{:.10f}".format(local_allreduce_time), "\t", "{:.10f}".format(global_allreduce_time),
+                      "\t", "{:.10f}".format(cpu_stop - cpu_start), file=allreduce_time_file)
             self.actual_optimizer.update(None, *args, **kwds)
 
     def is_changed(self, target):
@@ -183,7 +194,7 @@ class _DoubleBufferingOptimizer(object):
         setattr(self.actual_optimizer, attr_name, value)
 
 
-def create_hybrid_multi_node_optimizer(actual_optimizer, global_communicator, local_communicator, out="result",
+def create_hybrid_multi_node_optimizer(actual_optimizer, original_communicator,  global_communicator, local_communicator, out="result",
                                        double_buffering=False, zero_fill=True):
     """Create a Hybrid multi node optimizer from a Chainer optimizer.
     This function is modified from the origal multinode optimiser so as to perform a a sum all reduce on local
@@ -209,6 +220,8 @@ def create_hybrid_multi_node_optimizer(actual_optimizer, global_communicator, lo
             raise ValueError(
                 'This communicator does not support double buffering.')
         return _DoubleBufferingOptimizer(actual_optimizer, global_communicator, zero_fill)
-    return _HybridMultiNodeOptimizer(actual_optimizer=actual_optimizer, global_communicator=global_communicator,
+    return _HybridMultiNodeOptimizer(actual_optimizer=actual_optimizer,
+                                     original_communicator=original_communicator,
+                                     global_communicator=global_communicator,
                                      local_communicator=local_communicator,
                                      out=out, zero_fill=zero_fill)
