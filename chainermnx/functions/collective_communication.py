@@ -47,9 +47,10 @@ class AllGather(chainer.Function):
 class SpatialAllGather(chainer.Function):
     """Collective all-gather communication."""
 
-    def __init__(self, comm, out):
+    def __init__(self, original_comm, local_comm, out):
         chainer.utils.experimental('chainermn.functions.AllGather')
-        self.comm = comm
+        self.original_comm = original_comm
+        self.local_comm = local_comm
         self.out = out
         self.forward_spatial_allgather_time_file = open(os.path.join(self.out, "forward_spatial_allgather.log"), "a")
         self.backward_spatial_allgather_time_file = open(os.path.join(self.out, "backward_spatial_allgather.log"), "a")
@@ -62,14 +63,14 @@ class SpatialAllGather(chainer.Function):
         # convert to float32 for communication
         if numpy.float16 == x_dtype:
             x = x.astype(numpy.float32)
-        ret = self.comm.allgather(x)
+        ret = self.local_comm.allgather(x)
 
         # convert back
         if numpy.float16 == x_dtype:
             ret = tuple([item.astype(x_dtype) for item in ret])
 
         stop = time.time()
-        if self.comm.rank == 0:
+        if self.original_comm.rank == 0:
             print("{:.10f}".format(stop - start), file=self.forward_spatial_allgather_time_file)
 
         return ret
@@ -82,15 +83,15 @@ class SpatialAllGather(chainer.Function):
         if numpy.float16 == grad_dtype:
             grad_outputs = tuple([item.astype(numpy.float32)
                                   for item in grad_outputs])
-        gxs = self.comm.alltoall(grad_outputs)
+        gxs = self.local_comm.alltoall(grad_outputs)
         # Sum has been removed in this function to facilitate spatial all gather which doesnt require summation
-        gx = gxs[self.comm.rank]
+        gx = gxs[self.local_comm.rank]
         # convert back
         if numpy.float16 == grad_dtype:
             gx = gx.astype(grad_dtype)
         stop = time.time()
 
-        if self.comm.rank == 0:
+        if self.original_comm.rank == 0:
             print("{:.10f}".format(stop - start), file=self.backward_spatial_allgather_time_file)
         return gx,
 
@@ -312,7 +313,7 @@ class Scatter(chainer.Function):
             return dummy_var
 
 
-def spatialallgather(comm, x, out):
+def spatialallgather(original_comm, local_comm, x, out):
     """Differentiable all-gather communication between workers.
 
     This function invokes gather communications among processes specified
@@ -333,7 +334,7 @@ def spatialallgather(comm, x, out):
     """
     chainer.utils.experimental('chainermn.functions.all_gather')
 
-    return SpatialAllGather(comm, out)(x)
+    return SpatialAllGather(original_comm, local_comm, out)(x)
 
 
 def alltoall(comm, xs):
