@@ -6,8 +6,9 @@ import os
 
 
 class HaloExchange(FunctionNode, ABC):
-    def __init__(self, comm, k_size, index, pad, out):
-        self.comm = comm
+    def __init__(self, original_comm, local_comm, k_size, index, pad, out):
+        self.comm = local_comm
+        self.original_comm = original_comm
         self.index = index
         self.k_size = k_size
         self.pad = pad
@@ -61,13 +62,13 @@ class HaloExchange(FunctionNode, ABC):
                 received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
                 x = cp.concatenate((x, received_halo_region), axis=-2)
         stop = time.time()
-        if self.comm.rank == 0:
-            print("{:.10f}".format(stop - start), file=self.forward_halo_exchange_time_file)
+        if self.original_comm.rank == 0:
+            print("{:.10f}".format(stop - start), self.index,  file=self.forward_halo_exchange_time_file)
         return x,
 
     def backward(self, target_input_indexes, grad_outputs):
-        # Here we are just doing the reshaping. Actual halo exchange for backward takes place in the
-        # convolution function.
+        # Here we are just doing the reshaping.
+        # Actual halo exchange for backward takes place in the convolution function.
         gy, = grad_outputs
         if self.halo_size != 0:
             if self.pad == 0:
@@ -89,8 +90,8 @@ class HaloExchange(FunctionNode, ABC):
         return gy,
 
 
-def halo_exchange(comm, x, k_size, index, pad, out):
-    func = HaloExchange(comm=comm, k_size=k_size, index=index, pad=pad, out=out)
+def halo_exchange(original_comm, local_comm, x, k_size, index, pad, out):
+    func = HaloExchange(original_comm=original_comm, local_comm=local_comm, k_size=k_size, index=index, pad=pad, out=out)
     return func.apply((x,))[0]
 
 
