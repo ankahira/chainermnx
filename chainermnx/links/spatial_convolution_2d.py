@@ -1,5 +1,5 @@
 import chainer
-from chainermnx.functions import convolution_2d
+from chainermnx.functions import spatial_convolution_2d
 from chainer import initializers
 from chainer import link
 from chainer import memory_layouts
@@ -8,10 +8,10 @@ from chainer import variable
 import cupy as cp
 
 
-class Convolution2D(link.Link):
-    def __init__(self, comm, out, index, in_channels, out_channels, ksize=None, stride=1, pad=0,
+class SpatialConvolution2D(link.Link):
+    def __init__(self, original_comm, local_comm,  out, index, in_channels, out_channels, ksize=None, stride=1, pad=0,
                  nobias=False, initialW=None, initial_bias=None, **kwargs):
-        super(Convolution2D, self).__init__()
+        super(SpatialConvolution2D, self).__init__()
 
         dilate, groups = argument.parse_kwargs(
             kwargs, ('dilate', 1), ('groups', 1),
@@ -40,7 +40,8 @@ class Convolution2D(link.Link):
         self.x_layout = x_layout
 
         # For halo exchange
-        self.comm = comm
+        self.comm = local_comm
+        self.original_comm = original_comm
         self.index = index
         self.out = out
         # Calculate the Halo exchange region that will be passed to the conv2d function.
@@ -159,8 +160,7 @@ nobias=False, *, dilate=1, groups=1)
             _, c, _, _ = memory_layouts.get_semantic_shape(
                 x, assumed_layout=self.x_layout)
             self._initialize_params(c)
-        # why is this calling conv2d insttead of spatil_convd2d
-        return convolution_2d.convolution_2d(self.comm, self.out, self.index, self.halo_size,
+        return spatial_convolution_2d.spatial_convolution_2d(self.original_comm, self.comm, self.out, self.index, self.halo_size,
                                         x, self.W, self.b, self.stride, self.pad, dilate=self.dilate,
                                         groups=self.groups)
 

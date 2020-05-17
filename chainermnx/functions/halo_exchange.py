@@ -13,7 +13,9 @@ class HaloExchange(FunctionNode, ABC):
         self.k_size = k_size
         self.pad = pad
         self.out = out
-        self.forward_halo_exchange_time_file = open(os.path.join(self.out, "forward_halo_exchange_time.log"), "a")
+        # self.forward_halo_exchange_time_file = open(os.path.join(self.out, "forward_halo_exchange_time_" + str(self.index)+ ".log"), "a")
+        self.forward_halo_exchange_time_file = open(os.path.join(self.out, "forward_halo_exchange_time.log"), "a", buffering=1)
+
         if (self.k_size % 2) == 0:
             self.halo_size = self.k_size // 2
         else:
@@ -63,7 +65,7 @@ class HaloExchange(FunctionNode, ABC):
                 x = cp.concatenate((x, received_halo_region), axis=-2)
         stop = time.time()
         if self.original_comm.rank == 0:
-            print("{:.10f}".format(stop - start), self.index,  file=self.forward_halo_exchange_time_file)
+            print("{:.10f}".format(stop - start), "\t",  self.index,  file=self.forward_halo_exchange_time_file)
         return x,
 
     def backward(self, target_input_indexes, grad_outputs):

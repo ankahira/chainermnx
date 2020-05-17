@@ -49,14 +49,14 @@ class _HybridMultiNodeOptimizer(object):
             self.global_communicator.bcast_data(target)
         else:
             """
-            This is a critical part of hybrid. First do an all reduce on each node then do an all reduce globally. 
-            However the local all reduce is the modified all reduce such that it doesnt take the sum ie like spatial             
+            This is a critical part of hybrid. First do an allreduce on each node then do an all reduce globally. 
+            However the local allreduce is the modified allreduce such that it doesnt take the sum ie like spatial             
             """
-            # TODO
-            # there might be an issue with how you perform allreduce.
+            #TODO
+            # There might be an issue with how you perform allreduce.
             # Need to ensure that the correct group in global comm performs allreduce
             # Maybe an if statement before the global allreduce such that only leading GPUs perform allreduce
-            # Aldo remember this is for both spatial hybrid and filter hybrid. Might need to change accordingly
+            # Also remember this is for both spatial hybrid and filter hybrid. Might need to change accordingly
             cpu_start = time.time()
             torch.cuda.synchronize()
             cpu_stop = time.time()
