@@ -61,15 +61,15 @@ class _HybridMultiNodeOptimizer(object):
             torch.cuda.synchronize()
             cpu_stop = time.time()
             start = time.perf_counter()
-            self.local_communicator.intra_node_mean_grad(target, self.zero_fill)
+            #self.local_communicator.intra_node_mean_grad(target, self.zero_fill)
             torch.cuda.synchronize()
             stop = time.perf_counter()
             local_allreduce_time = stop - start
 
             torch.cuda.synchronize()
             start = time.perf_counter()
-            if self.local_communicator.rank == 0:
-                self.global_communicator.multi_node_mean_grad(target, self.zero_fill)
+            #if self.local_communicator.rank == 0:
+            #    self.global_communicator.multi_node_mean_grad(target, self.zero_fill)
             torch.cuda.synchronize()
             stop = time.perf_counter()
             global_allreduce_time = stop - start

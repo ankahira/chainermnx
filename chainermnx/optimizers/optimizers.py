@@ -39,7 +39,7 @@ class _MultiNodeOptimizer(object):
             torch.cuda.synchronize()
             cpu_stop = time.time()
             start = time.perf_counter()
-            self.communicator.multi_node_mean_grad(target, self.zero_fill)
+            #self.communicator.multi_node_mean_grad(target, self.zero_fill)
             torch.cuda.synchronize()
             stop = time.perf_counter()
             allreduce_time = stop - start

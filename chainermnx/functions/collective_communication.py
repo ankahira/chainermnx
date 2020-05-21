@@ -3,6 +3,7 @@ import chainer
 from chainer import backend
 import time
 import numpy
+import torch
 
 
 class AllGather(chainer.Function):
@@ -60,15 +61,22 @@ class SpatialAllGather(chainer.Function):
         x, = inputs
         x_dtype = x.dtype
 
-        # convert to float32 for communication
-        if numpy.float16 == x_dtype:
-            x = x.astype(numpy.float32)
-        ret = self.local_comm.allgather(x)
+        # Comment the communication with fake commm for test the computation time.
+        # # convert to float32 for communication
+        # if numpy.float16 == x_dtype:
+            # x = x.astype(numpy.float32)
+        # ret = self.local_comm.allgather(x)
 
-        # convert back
-        if numpy.float16 == x_dtype:
-            ret = tuple([item.astype(x_dtype) for item in ret])
-
+        # # convert back
+        # if numpy.float16 == x_dtype:
+            # ret = tuple([item.astype(x_dtype) for item in ret])
+        torch.cuda.synchronize()
+        ret = []
+        for i in range (0,self.local_comm.size):
+            ret.append(x)
+        ret = tuple(ret)   
+        # End fake communication
+        
         stop = time.time()
         if self.original_comm.rank == 0:
             print("{:.10f}".format(stop - start), file=self.forward_spatial_allgather_time_file)
@@ -79,16 +87,22 @@ class SpatialAllGather(chainer.Function):
         # This part is modified to remove the sum in all gather
         start = time.time()
         grad_dtype = grad_outputs[0].dtype
-        # convert to float32 for communication
-        if numpy.float16 == grad_dtype:
-            grad_outputs = tuple([item.astype(numpy.float32)
-                                  for item in grad_outputs])
-        gxs = self.local_comm.alltoall(grad_outputs)
-        # Sum has been removed in this function to facilitate spatial all gather which doesnt require summation
-        gx = gxs[self.local_comm.rank]
-        # convert back
-        if numpy.float16 == grad_dtype:
-            gx = gx.astype(grad_dtype)
+        
+        # Comment the communication with fake commm for test the computation time.                          
+        # # convert to float32 for communication
+        # if numpy.float16 == grad_dtype:
+            # grad_outputs = tuple([item.astype(numpy.float32)
+                                  # for item in grad_outputs])
+        # gxs = self.local_comm.alltoall(grad_outputs)
+        # # Sum has been removed in this function to facilitate spatial all gather which doesnt require summation
+        # gx = gxs[self.local_comm.rank]
+        # # convert back
+        # if numpy.float16 == grad_dtype:
+            # gx = gx.astype(grad_dtype)
+		torch.cuda.synchronize()
+        gx = grad_outputs[self.local_comm.rank]
+        # End fake communication    
+            
         stop = time.time()
 
         if self.original_comm.rank == 0:

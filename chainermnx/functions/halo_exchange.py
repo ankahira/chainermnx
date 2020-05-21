@@ -48,21 +48,40 @@ class HaloExchange(FunctionNode, ABC):
 
             lower_halo_region = x[:, :, -self.halo_size:, :]
             upper_halo_region = x[:, :, :self.halo_size, :]
+            
+            # Comment the communication with fake commm for test the computation time.
             # Exchange the lower region first
-            if self.comm.rank < 3:
-                self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
+            # if self.comm.rank < 3:
+                # self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
 
+            # if self.comm.rank > 0:
+                # received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
+                # x = cp.concatenate((received_halo_region, x), axis=-2)
+
+            # # Exchange the upper region
+            # if self.comm.rank > 0:
+                # self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
+
+            # if self.comm.rank < 3:
+                # received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
+                # x = cp.concatenate((x, received_halo_region), axis=-2)
+            
+            # Exchange the lower region first
             if self.comm.rank > 0:
-                received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
+                received_halo_region_shape = lower_halo_region.shape
+                received_halo_region = cp.zeros(received_halo_region_shape)
+                val_dtype = lower_halo_region[0].dtype
+                received_halo_region = received_halo_region.astype(val_dtype)
                 x = cp.concatenate((received_halo_region, x), axis=-2)
 
             # Exchange the upper region
-            if self.comm.rank > 0:
-                self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
-
             if self.comm.rank < 3:
-                received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
+                received_halo_region_shape = upper_halo_region.shape
+                received_halo_region = cp.zeros(received_halo_region_shape)
+                val_dtype = upper_halo_region[0].dtype
+                received_halo_region = received_halo_region.astype(val_dtype)
                 x = cp.concatenate((x, received_halo_region), axis=-2)
+            # End fake communication    
         stop = time.time()
         if self.original_comm.rank == 0:
             print("{:.10f}".format(stop - start), "\t",  self.index,  file=self.forward_halo_exchange_time_file)

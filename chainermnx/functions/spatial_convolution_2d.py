@@ -303,24 +303,42 @@ class SpatialConvolution2DFunction(function_node.FunctionNode):
                     npad = ((0, 0), (0, 0), (0, self.pw), (0, 0))
                     halo_gy_array = cp.pad(halo_gy_array, pad_width=npad, mode="constant")
 
-            # Exchange the lower region first
             lower_halo_region = halo_gy_array[:, :, -self.halo_size:, :]
             upper_halo_region = halo_gy_array[:, :, :self.halo_size, :]
 
-            if self.comm.rank < 3:
-                self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
+			# Comment the communication with fake commm for test the computation time.
+            # # Exchange the lower region first
+            # if self.comm.rank < 3:
+                # self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
+            # if self.comm.rank > 0:
+                # received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
+                # halo_gy_array = cp.concatenate((received_halo_region, halo_gy_array), axis=-2)
+
+            # # Exchange the upper region
+            # if self.comm.rank > 0:
+                # self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
+
+            # if self.comm.rank < 3:
+                # received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
+                # halo_gy_array = cp.concatenate((halo_gy_array, received_halo_region), axis=-2)
+            # Exchange the lower region first
             if self.comm.rank > 0:
-                received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
+                received_halo_region_shape = lower_halo_region.shape
+                received_halo_region = cp.zeros(received_halo_region_shape)
+                val_dtype = lower_halo_region[0].dtype
+                received_halo_region = received_halo_region.astype(val_dtype)
+				
                 halo_gy_array = cp.concatenate((received_halo_region, halo_gy_array), axis=-2)
 
             # Exchange the upper region
-            if self.comm.rank > 0:
-                self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
-
             if self.comm.rank < 3:
-                received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
+                received_halo_region_shape = upper_halo_region.shape
+                received_halo_region = cp.zeros(received_halo_region_shape)
+                val_dtype = upper_halo_region[0].dtype
+                received_halo_region = received_halo_region.astype(val_dtype)
                 halo_gy_array = cp.concatenate((halo_gy_array, received_halo_region), axis=-2)
-
+            # End fake communication
+			
             gy.array = halo_gy_array
 
             # -----------------------------------------End halo exchange--------------------------------------#
