@@ -58,55 +58,71 @@ class SpatialAllGather(chainer.Function):
 
     def forward(self, inputs):
         start = time.time()
+        torch.cuda.synchronize()
+        stop = time.time()
+        sync_time = stop - start
+        
+        start = time.time()
         x, = inputs
         x_dtype = x.dtype
 
         # Comment the communication with fake commm for test the computation time.
-        # # convert to float32 for communication
-        # if numpy.float16 == x_dtype:
-            # x = x.astype(numpy.float32)
-        # ret = self.local_comm.allgather(x)
-
-        # # convert back
-        # if numpy.float16 == x_dtype:
-            # ret = tuple([item.astype(x_dtype) for item in ret])
+        # convert to float32 for communication
         torch.cuda.synchronize()
-        ret = []
-        for i in range (0,self.local_comm.size):
-            ret.append(x)
-        ret = tuple(ret)   
-        # End fake communication
+        if numpy.float16 == x_dtype:
+            x = x.astype(numpy.float32)
+        ret = self.local_comm.allgather(x)
+
+        # convert back
+        if numpy.float16 == x_dtype:
+            ret = tuple([item.astype(x_dtype) for item in ret])
+            
+        # # Start fake communication
+        # torch.cuda.synchronize()
+        # ret = []
+        # for i in range (0,self.local_comm.size):
+            # ret.append(x)
+        # ret = tuple(ret)   
+        # # End fake communication
         
+        torch.cuda.synchronize()
         stop = time.time()
         if self.original_comm.rank == 0:
-            print("{:.10f}".format(stop - start), file=self.forward_spatial_allgather_time_file)
+            print("{:.10f}".format(stop - start),  "\t",  "{:.10f}".format(sync_time),  file=self.forward_spatial_allgather_time_file)
 
         return ret
 
     def backward(self, inputs, grad_outputs):
         # This part is modified to remove the sum in all gather
         start = time.time()
+        torch.cuda.synchronize()
+        stop = time.time()
+        sync_time = stop - start
+        
+        start = time.time()
         grad_dtype = grad_outputs[0].dtype
         
         # Comment the communication with fake commm for test the computation time.                          
-        # # convert to float32 for communication
-        # if numpy.float16 == grad_dtype:
-            # grad_outputs = tuple([item.astype(numpy.float32)
-                                  # for item in grad_outputs])
-        # gxs = self.local_comm.alltoall(grad_outputs)
-        # # Sum has been removed in this function to facilitate spatial all gather which doesnt require summation
-        # gx = gxs[self.local_comm.rank]
-        # # convert back
-        # if numpy.float16 == grad_dtype:
-            # gx = gx.astype(grad_dtype)
-		torch.cuda.synchronize()
-        gx = grad_outputs[self.local_comm.rank]
-        # End fake communication    
-            
+        # convert to float32 for communication
+        if numpy.float16 == grad_dtype:
+            grad_outputs = tuple([item.astype(numpy.float32)
+                                  for item in grad_outputs])
+        gxs = self.local_comm.alltoall(grad_outputs)
+        # Sum has been removed in this function to facilitate spatial all gather which doesnt require summation
+        gx = gxs[self.local_comm.rank]
+        # convert back
+        if numpy.float16 == grad_dtype:
+            gx = gx.astype(grad_dtype)
+
+        # #Start fake communication            
+        # #torch.cuda.synchronize()
+        # gx = grad_outputs[self.local_comm.rank]
+        # #End fake communication    
+        torch.cuda.synchronize()    
         stop = time.time()
 
         if self.original_comm.rank == 0:
-            print("{:.10f}".format(stop - start), file=self.backward_spatial_allgather_time_file)
+            print("{:.10f}".format(stop - start), "\t",   "{:.10f}".format(sync_time),   file=self.backward_spatial_allgather_time_file)
         return gx,
 
 

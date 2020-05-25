@@ -60,19 +60,23 @@ class _HybridMultiNodeOptimizer(object):
             cpu_start = time.time()
             torch.cuda.synchronize()
             cpu_stop = time.time()
-            start = time.perf_counter()
-            #self.local_communicator.intra_node_mean_grad(target, self.zero_fill)
+            #self.original_communicator.mpi_barrier()
+            start = time.time()
+            self.local_communicator.intra_node_mean_grad(target, self.zero_fill)
             torch.cuda.synchronize()
-            stop = time.perf_counter()
+            stop = time.time()
             local_allreduce_time = stop - start
 
             torch.cuda.synchronize()
-            start = time.perf_counter()
-            #if self.local_communicator.rank == 0:
-            #    self.global_communicator.multi_node_mean_grad(target, self.zero_fill)
+            #self.original_communicator.mpi_barrier()
+            start = time.time()
+            if self.local_communicator.rank == 0:
+              self.global_communicator.multi_node_mean_grad(target, self.zero_fill)
             torch.cuda.synchronize()
-            stop = time.perf_counter()
+            self.original_communicator.mpi_barrier()
+            stop = time.time()
             global_allreduce_time = stop - start
+            
             allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
             # Find a way to print with just one rank .
             if self.original_communicator.rank == 0:

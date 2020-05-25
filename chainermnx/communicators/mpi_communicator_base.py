@@ -154,6 +154,9 @@ class MpiCommunicatorBase(communicator_base.CommunicatorBase):
             # Although MpiCommunicatorBase has no ancestor, practice.
             return super(MpiCommunicatorBase, self).get_config(name)
 
+    def mpi_barrier(self):
+        self.mpi_comm.barrier()
+    
     def split(self, color, key):
         return self.__class__(mpi_comm=self.mpi_comm.Split(color, key))
 

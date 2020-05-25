@@ -4,7 +4,7 @@ from chainer import FunctionNode
 import cupy as cp
 
 import time
-
+import torch
 
 class HaloExchangePooling(FunctionNode, ABC):
     def __init__(self,  original_comm, local_comm, k_size, index, out):
@@ -23,6 +23,11 @@ class HaloExchangePooling(FunctionNode, ABC):
     def forward(self, inputs):
         x, = inputs
         start = time.time()
+        torch.cuda.synchronize()
+        stop = time.time()
+        sync_time = stop - start
+        
+        start = time.time()
 
         # pad the top and bottom part
         if self.comm.rank == 0:
@@ -38,39 +43,47 @@ class HaloExchangePooling(FunctionNode, ABC):
         
         # Comment the communication with fake commm for test the computation time. 
         # Exchange the lower region first
-        # if self.comm.rank < 3:
-            # self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
+        #torch.cuda.synchronize()
+        if self.comm.rank < 3:
+            self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
 
-        # if self.comm.rank > 0:
-            # received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
-            # x = cp.concatenate((received_halo_region, x), axis=-2)
-
-        # # Exchange the upper region
-        # if self.comm.rank > 0:
-            # self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
-
-        # if self.comm.rank < 3:
-            # received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
-            # x = cp.concatenate((x, received_halo_region), axis=-2)
         if self.comm.rank > 0:
-            received_halo_region_shape = lower_halo_region.shape
-            received_halo_region = cp.zeros(received_halo_region_shape)
-            val_dtype = lower_halo_region[0].dtype
-            received_halo_region = received_halo_region.astype(val_dtype)
+            received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
             x = cp.concatenate((received_halo_region, x), axis=-2)
 
         # Exchange the upper region
+        #torch.cuda.synchronize()
+        if self.comm.rank > 0:
+            self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
+
         if self.comm.rank < 3:
-            received_halo_region_shape = upper_halo_region.shape
-            received_halo_region = cp.zeros(received_halo_region_shape)
-            val_dtype = upper_halo_region[0].dtype
-            received_halo_region = received_halo_region.astype(val_dtype)
+            received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
             x = cp.concatenate((x, received_halo_region), axis=-2)
-        # End fake communication
-            
+        
+        # # Start fake communication
+        # #Exchange the lower region first
+        # if self.comm.rank > 0:
+            # #torch.cuda.synchronize()
+            # received_halo_region_shape = lower_halo_region.shape
+            # received_halo_region = cp.zeros(received_halo_region_shape)
+            # val_dtype = lower_halo_region[0].dtype
+            # received_halo_region = received_halo_region.astype(val_dtype)
+            # x = cp.concatenate((received_halo_region, x), axis=-2)
+
+        # # Exchange the upper region
+        # if self.comm.rank < 3:
+            # #torch.cuda.synchronize()
+            # received_halo_region_shape = upper_halo_region.shape
+            # received_halo_region = cp.zeros(received_halo_region_shape)
+            # val_dtype = upper_halo_region[0].dtype
+            # received_halo_region = received_halo_region.astype(val_dtype)
+            # x = cp.concatenate((x, received_halo_region), axis=-2)
+        # # End fake communication
+        
+        torch.cuda.synchronize()        
         stop = time.time()
         if self.original_comm.rank == 0:
-            print("{:.10f}".format(stop - start), "\t", self.index, file=self.forward_halo_exchange_time_file)
+            print("{:.10f}".format(stop - start), "\t","{:.10f}".format(sync_time),"\t", self.index, file=self.forward_halo_exchange_time_file)
         return x,
 
     def backward(self, target_input_indexes, grad_outputs):

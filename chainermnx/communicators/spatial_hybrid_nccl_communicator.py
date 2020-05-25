@@ -52,6 +52,9 @@ class SpatialHybridNcclCommunicator(mpi_communicator_base.MpiCommunicatorBase):
             self.nccl_comm.destroy()
             self.nccl_comm = None
 
+    def mpi_barrier(self):
+        self.mpi_comm.barrier()
+        
     def _init_comms(self):
         if self.nccl_comm is not None:
             return
