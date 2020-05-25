@@ -104,7 +104,7 @@ class SpatialConvolutionND(link.Link):
 
     """
 
-    def __init__(self, comm, out, index, ndim, in_channels, out_channels, ksize=None, stride=1,
+    def __init__(self, original_comm, local_comm, out, index, ndim, in_channels, out_channels, ksize=None, stride=1,
                  pad=0, nobias=False, initialW=None, initial_bias=None,
                  cover_all=False, dilate=1, groups=1):
 
@@ -123,7 +123,8 @@ class SpatialConvolutionND(link.Link):
         self.groups = int(groups)
 
         # For halo exchange
-        self.comm = comm
+        self.comm = local_comm
+        self.original_comm = original_comm
         self.index = index
         self.out = out
         # Calculate the Halo exchange region that will be passed to the conv2d function.
@@ -222,9 +223,8 @@ nobias=False, *, cover_all=False, dilate=1, groups=1)
         """
         if self.W.array is None:
             self._initialize_params(x.shape[1])
-        return spatial_convolution_nd.spatial_convolution_nd(self.comm, self.out, self.index, self.halo_size,
-            x, self.W, self.b, self.stride, self.pad, cover_all=self.cover_all,
-            dilate=self.dilate, groups=self.groups)
+        return spatial_convolution_nd.spatial_convolution_nd(self.original_comm, self.comm, self.out, self.index, self.halo_size,
+            x, self.W, self.b, self.stride, self.pad, cover_all=self.cover_all,  dilate=self.dilate, groups=self.groups)
 
 
 class SpatialConvolution3D(SpatialConvolutionND):
@@ -238,10 +238,8 @@ class SpatialConvolution3D(SpatialConvolutionND):
 
     """
 
-    def __init__(self, comm, out, index,  in_channels, out_channels, ksize, stride=1, pad=0,
-                 nobias=False, initialW=None, initial_bias=None,
-                 cover_all=False, dilate=1, groups=1):
+    def __init__(self, original_comm, local_comm, out, index,  in_channels, out_channels, ksize, stride=1, pad=0,
+                 nobias=False, initialW=None, initial_bias=None, cover_all=False, dilate=1, groups=1):
 
-        super(SpatialConvolution3D, self).__init__(comm, out, index,
-            3, in_channels, out_channels, ksize, stride, pad, nobias, initialW,
+        super(SpatialConvolution3D, self).__init__(original_comm, local_comm, out, index, 3, in_channels, out_channels, ksize, stride, pad, nobias, initialW,
             initial_bias, cover_all, dilate, groups)

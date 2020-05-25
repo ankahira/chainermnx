@@ -20,7 +20,7 @@ import time
 
 class SpatialConvolutionND(function_node.FunctionNode):
 
-    def __init__(self, comm, out, index, halo_size, ndim, stride=1, pad=0, cover_all=False,
+    def __init__(self, original_comm, local_comm, out, index, halo_size, ndim, stride=1, pad=0, cover_all=False,
                  dilate=1, groups=1):
         self.ndim = ndim
         self.stride = conv_nd.as_tuple(stride, ndim)
@@ -28,7 +28,8 @@ class SpatialConvolutionND(function_node.FunctionNode):
         self.cover_all = cover_all
         self.dilate = conv_nd.as_tuple(dilate, ndim)
         self.groups = groups
-        self.comm = comm
+        self.comm = local_comm
+        self.original_comm = original_comm
         self.out = out
         self.index = index
         self.halo_size = halo_size
@@ -257,7 +258,7 @@ class SpatialConvolutionND(function_node.FunctionNode):
 
         stop = time.time()
 
-        if self.comm.rank == 0:
+        if self.original_comm  == 0:
             print("{:.10f}".format(stop - start), file=self.backward_halo_exchange_time_file)
 
         ret = []
@@ -491,7 +492,7 @@ class ConvolutionNDGradW(function_node.FunctionNode):
         return ret
 
 
-def spatial_convolution_nd(comm, out, index, halo_size, x, W, b=None, stride=1, pad=0, cover_all=False,
+def spatial_convolution_nd(original_comm, comm, out, index, halo_size, x, W, b=None, stride=1, pad=0, cover_all=False,
                    dilate=1, groups=1):
     """N-dimensional convolution function.
 
@@ -627,7 +628,7 @@ astype(np.float32)
 
     """
     ndim = len(x.shape[2:])
-    fnode = SpatialConvolutionND(comm=comm, out=out, index=index, halo_size=halo_size,
+    fnode = SpatialConvolutionND(original_comm=original_comm, local_comm=comm, out=out, index=index, halo_size=halo_size,
         ndim=ndim, stride=stride, pad=pad, cover_all=cover_all, dilate=dilate, groups=groups)
     args = (x, W) if b is None else (x, W, b)
     y, = fnode.apply(args)

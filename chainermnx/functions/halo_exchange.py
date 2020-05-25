@@ -13,7 +13,6 @@ class HaloExchange(FunctionNode, ABC):
         self.k_size = k_size
         self.pad = pad
         self.out = out
-        # self.forward_halo_exchange_time_file = open(os.path.join(self.out, "forward_halo_exchange_time_" + str(self.index)+ ".log"), "a")
         self.forward_halo_exchange_time_file = open(os.path.join(self.out, "forward_halo_exchange_time.log"), "a", buffering=1)
 
         if (self.k_size % 2) == 0:
