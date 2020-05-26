@@ -53,8 +53,8 @@ class SpatialAllGather(chainer.Function):
         self.original_comm = original_comm
         self.local_comm = local_comm
         self.out = out
-        self.forward_spatial_allgather_time_file = open(os.path.join(self.out, "forward_spatial_allgather.log"), "a")
-        self.backward_spatial_allgather_time_file = open(os.path.join(self.out, "backward_spatial_allgather.log"), "a")
+        self.forward_spatial_allgather_time_file = open(os.path.join(self.out, "forward_spatial_allgather.log"), "a", buffering=1)
+        self.backward_spatial_allgather_time_file = open(os.path.join(self.out, "backward_spatial_allgather.log"), "a", buffering=1)
 
     def forward(self, inputs):
         start = time.time()
