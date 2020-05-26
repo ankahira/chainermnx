@@ -15,6 +15,7 @@ import chainerx
 import cupy as cp
 import cupy
 import time
+import torch
 
 mempool = cupy.get_default_memory_pool()
 pinned_mempool = cupy.get_default_pinned_memory_pool()
@@ -290,7 +291,6 @@ class SpatialConvolution2DFunction(function_node.FunctionNode):
 
         if self.halo_size != 0:
             # -----------------------------------------start halo exchange--------------------------------------3
-
             # Pad the top and bottom
             if self.pw != 0:
                 if self.comm.rank == 0:
@@ -306,7 +306,7 @@ class SpatialConvolution2DFunction(function_node.FunctionNode):
             # Exchange the lower region first
             lower_halo_region = halo_gy_array[:, :, -self.halo_size:, :]
             upper_halo_region = halo_gy_array[:, :, :self.halo_size, :]
-
+            torch.cuda.synchronize()
             if self.comm.rank < 3:
                 self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
             if self.comm.rank > 0:
@@ -314,6 +314,7 @@ class SpatialConvolution2DFunction(function_node.FunctionNode):
                 halo_gy_array = cp.concatenate((received_halo_region, halo_gy_array), axis=-2)
 
             # Exchange the upper region
+            torch.cuda.synchronize()
             if self.comm.rank > 0:
                 self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
 
@@ -322,7 +323,7 @@ class SpatialConvolution2DFunction(function_node.FunctionNode):
                 halo_gy_array = cp.concatenate((halo_gy_array, received_halo_region), axis=-2)
 
             gy.array = halo_gy_array
-
+            torch.cuda.synchronize()
             # -----------------------------------------End halo exchange--------------------------------------#
         stop = time.time()
         if self.original_comm.rank == 0:

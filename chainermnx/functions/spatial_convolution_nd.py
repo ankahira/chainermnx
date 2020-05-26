@@ -16,7 +16,7 @@ import chainerx
 import cupy as cp
 
 import time
-
+import torch
 
 class SpatialConvolutionND(function_node.FunctionNode):
 
@@ -238,7 +238,7 @@ class SpatialConvolutionND(function_node.FunctionNode):
             # Exchange the lower region first
             lower_halo_region = halo_gy_array[:, :, :, -self.halo_size:, :]
             upper_halo_region = halo_gy_array[:, :, :, :self.halo_size, :]
-
+            torch.cuda.synchronize()
             if self.comm.rank < 3:
                 self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
             if self.comm.rank > 0:
@@ -246,6 +246,7 @@ class SpatialConvolutionND(function_node.FunctionNode):
                 halo_gy_array = cp.concatenate((received_halo_region, halo_gy_array), axis=-2)
 
             # Exchange the upper region
+            torch.cuda.synchronize()
             if self.comm.rank > 0:
                 self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
 
@@ -255,7 +256,7 @@ class SpatialConvolutionND(function_node.FunctionNode):
 
             gy.array = halo_gy_array
         # -----------------------------------------End halo exchange--------------------------------------#
-
+            torch.cuda.synchronize()
         stop = time.time()
 
         if self.original_comm  == 0:

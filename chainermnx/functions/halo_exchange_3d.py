@@ -4,7 +4,7 @@ from chainer import FunctionNode
 import cupy as cp
 
 import time
-
+import torch
 
 class HaloExchange3D(FunctionNode, ABC):
     def __init__(self,  original_comm, local_comm, k_size, index, pad, out):
@@ -49,6 +49,7 @@ class HaloExchange3D(FunctionNode, ABC):
             lower_halo_region = x[:, :, :, -self.halo_size:, :]
             upper_halo_region = x[:, :, :, :self.halo_size, :]
             # Exchange the lower region first
+            torch.cuda.synchronize()
             if self.comm.rank < 3:
                 self.comm.send(lower_halo_region, self.comm.rank + 1, (self.comm.rank + 1) * self.index)
 
@@ -57,12 +58,15 @@ class HaloExchange3D(FunctionNode, ABC):
                 x = cp.concatenate((received_halo_region, x), axis=-2)
 
             # Exchange the upper region
+            torch.cuda.synchronize()
             if self.comm.rank > 0:
                 self.comm.send(upper_halo_region, self.comm.rank - 1, (self.comm.rank - 1) * self.index * 2)
 
             if self.comm.rank < 3:
                 received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
                 x = cp.concatenate((x, received_halo_region), axis=-2)
+            
+            torch.cuda.synchronize()
             stop = time.time()
 
             if self.original_comm.rank == 0:

@@ -4,6 +4,7 @@ from chainer import backend
 import time
 import numpy
 
+import torch
 
 class AllGather(chainer.Function):
     """Collective all-gather communication."""
@@ -60,6 +61,7 @@ class SpatialAllGather(chainer.Function):
         x, = inputs
         x_dtype = x.dtype
 
+        torch.cuda.synchronize()
         # convert to float32 for communication
         if numpy.float16 == x_dtype:
             x = x.astype(numpy.float32)
@@ -68,7 +70,7 @@ class SpatialAllGather(chainer.Function):
         # convert back
         if numpy.float16 == x_dtype:
             ret = tuple([item.astype(x_dtype) for item in ret])
-
+        torch.cuda.synchronize()
         stop = time.time()
         if self.original_comm.rank == 0:
             print("{:.10f}".format(stop - start), file=self.forward_spatial_allgather_time_file)
@@ -83,12 +85,14 @@ class SpatialAllGather(chainer.Function):
         if numpy.float16 == grad_dtype:
             grad_outputs = tuple([item.astype(numpy.float32)
                                   for item in grad_outputs])
+        torch.cuda.synchronize()
         gxs = self.local_comm.alltoall(grad_outputs)
         # Sum has been removed in this function to facilitate spatial all gather which doesnt require summation
         gx = gxs[self.local_comm.rank]
         # convert back
         if numpy.float16 == grad_dtype:
             gx = gx.astype(grad_dtype)
+        torch.cuda.synchronize()
         stop = time.time()
 
         if self.original_comm.rank == 0:
