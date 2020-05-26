@@ -14,7 +14,7 @@ class HaloExchange3D(FunctionNode, ABC):
         self.k_size = k_size
         self.pad = pad
         self.out = out
-        self.forward_halo_exchange_time_file = open(os.path.join(self.out, "forward_halo_exchange_time.log"), "a")
+        self.forward_halo_exchange_time_file = open(os.path.join(self.out, "forward_halo_exchange_time.log"), "a", buffering=1)
         if (self.k_size % 2) == 0:
             self.halo_size = self.k_size // 2
         else:
@@ -22,7 +22,7 @@ class HaloExchange3D(FunctionNode, ABC):
 
     def forward(self, inputs):
         x, = inputs
-
+        start = time.time()
         if self.comm is None:
             return x,
 
@@ -63,10 +63,9 @@ class HaloExchange3D(FunctionNode, ABC):
             if self.comm.rank < 3:
                 received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
                 x = cp.concatenate((x, received_halo_region), axis=-2)
-            stop = time.time()
-
-            if self.original_comm.rank == 0:
-                print("{:.10f}".format(stop - start), file=self.forward_halo_exchange_time_file)
+        stop = time.time()
+        if self.original_comm.rank == 0:
+            print("{:.10f}".format(stop - start), "\t",  self.index,  file=self.forward_halo_exchange_time_file)
 
         return x,
 

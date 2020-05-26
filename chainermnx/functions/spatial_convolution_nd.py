@@ -35,7 +35,7 @@ class SpatialConvolutionND(function_node.FunctionNode):
         self.halo_size = halo_size
         # Added this line to get the pad width. Easier than changing all code
         self.pw = self.pad[0]
-        self.backward_halo_exchange_time_file = open(os.path.join(self.out, "backward_halo_exchange_time_file.log"), "a")
+        self.backward_halo_exchange_time_file = open(os.path.join(self.out, "backward_halo_exchange_time_file.log"), "a", buffering=1)
 
     def check_type_forward(self, in_types):
         n_in = in_types.size()
@@ -205,9 +205,6 @@ class SpatialConvolutionND(function_node.FunctionNode):
         gy, = grad_outputs
 
         # Halo exchange needs to happen here
-
-        start = time.time()
-
         # Create a copy of gy to use calculate gx. The original is used to calculate gw
         # this might be causing memory issues
 
@@ -218,7 +215,7 @@ class SpatialConvolutionND(function_node.FunctionNode):
         halo_gy_array = gy.array
 
         # Only do halo exchange when halo region is not 0
-
+        start = time.time()
         if self.halo_size != 0:
             # -----------------------------------------start halo exchange--------------------------------------3
             # Pad the top and bottom
@@ -258,7 +255,7 @@ class SpatialConvolutionND(function_node.FunctionNode):
 
         stop = time.time()
 
-        if self.original_comm  == 0:
+        if self.original_comm.rank == 0:
             print("{:.10f}".format(stop - start), file=self.backward_halo_exchange_time_file)
 
         ret = []
