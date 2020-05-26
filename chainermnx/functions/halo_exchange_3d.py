@@ -7,8 +7,9 @@ import time
 
 
 class HaloExchange3D(FunctionNode, ABC):
-    def __init__(self, comm, k_size, index, pad, out):
-        self.comm = comm
+    def __init__(self,  original_comm, local_comm, k_size, index, pad, out):
+        self.comm = local_comm
+        self.original_comm = original_comm
         self.index = index
         self.k_size = k_size
         self.pad = pad
@@ -64,7 +65,7 @@ class HaloExchange3D(FunctionNode, ABC):
                 x = cp.concatenate((x, received_halo_region), axis=-2)
             stop = time.time()
 
-            if self.comm.rank == 0:
+            if self.original_comm.rank == 0:
                 print("{:.10f}".format(stop - start), file=self.forward_halo_exchange_time_file)
 
         return x,
@@ -92,8 +93,8 @@ class HaloExchange3D(FunctionNode, ABC):
         return gy,
 
 
-def halo_exchange_3d(comm, x, k_size, index, pad, out):
-    func = HaloExchange3D(comm=comm, k_size=k_size, index=index, pad=pad, out=out)
+def halo_exchange_3d(original_comm, local_comm,  x, k_size, index, pad, out):
+    func = HaloExchange3D(original_comm=original_comm, local_comm=local_comm, k_size=k_size, index=index, pad=pad, out=out)
     return func.apply((x,))[0]
 
 
