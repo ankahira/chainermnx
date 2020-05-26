@@ -7,8 +7,10 @@ import chainermnx.functions as FX
 
 
 class FilterParallelConvolution2D(chainer.links.Convolution2D):
-    def __init__(self, comm, in_channels, out_channels, *args, **kwargs):
-        self.comm = comm
+    def __init__(self, original_comm, global_comm,  out, in_channels, out_channels, *args, **kwargs):
+        self.comm = global_comm
+        self.original_comm = original_comm
+        self.out = out
         self.in_channels = in_channels
         self.filters = out_channels
         indices = np.arange(self.filters)
@@ -21,7 +23,7 @@ class FilterParallelConvolution2D(chainer.links.Convolution2D):
         y = super(FilterParallelConvolution2D, self).__call__(x)
         # yys = chainermn.functions.allgather(self.comm, y) # The mpi allgather
         # yys = FX.allgather(self.comm, y) # MPI allgther but from chainermnx for debuging
-        ys = FX.filter_allgather(self.comm, y)  # NCCL Allgather
+        ys = FX.filter_allgather(self.original_comm, self.comm, self.out, y)  # NCCL Allgather
         return F.concat(ys, axis=1)
 
 

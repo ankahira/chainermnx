@@ -9,9 +9,11 @@ import torch
 
 class _MultiNodeOptimizer(object):
 
-    def __init__(self, actual_optimizer, communicator, out, zero_fill):
+    def __init__(self, actual_optimizer, original_comm, global_comm,  out, zero_fill):
         super(_MultiNodeOptimizer, self).__setattr__(
-            'communicator', communicator)
+            'communicator', global_comm)
+        super(_MultiNodeOptimizer, self).__setattr__(
+            'original_comm', original_comm)
         super(_MultiNodeOptimizer, self).__setattr__(
             'actual_optimizer', actual_optimizer)
         super(_MultiNodeOptimizer, self).__setattr__(
@@ -44,7 +46,7 @@ class _MultiNodeOptimizer(object):
             stop = time.perf_counter()
             allreduce_time = stop - start
             allreduce_time_file = open(os.path.join(self.out, "gradient_allreduce_times.log"), "a")
-            if self.communicator.rank == 0:
+            if self.original_comm.rank == 0:
                 print("{:.10f}".format(allreduce_time), "\t", "{:.10f}".format(cpu_stop-cpu_start), file=allreduce_time_file)
             self.actual_optimizer.update(None, *args, **kwds)
 
@@ -162,9 +164,13 @@ class _DoubleBufferingOptimizer(object):
         setattr(self.actual_optimizer, attr_name, value)
 
 
-def create_multi_node_optimizer(actual_optimizer, communicator, out="result",
+def create_multi_node_optimizer(actual_optimizer, original_comm, global_comm, out="result",
                                 double_buffering=False, zero_fill=True):
 
+    # NOTE
+    # We pass two comms here, one is global comm and other is original comm.
+    # The global comm has 1 rank for each node while the original comm has size as
+    # the total number of process. We pass the original comm so as to print with only 1 process.
 
     """Create a multi node optimizer from a Chainer optimizer.
     Added an ouput dir here for logging purposes.
@@ -193,10 +199,10 @@ def create_multi_node_optimizer(actual_optimizer, communicator, out="result",
     if double_buffering:
         from chainermn.communicators.pure_nccl_communicator \
             import PureNcclCommunicator
-        if not isinstance(communicator, PureNcclCommunicator):
+        if not isinstance(global_comm, PureNcclCommunicator):
             raise ValueError(
                 'This communicator does not support double buffering.')
-        return _DoubleBufferingOptimizer(actual_optimizer, communicator,
+        return _DoubleBufferingOptimizer(actual_optimizer, global_comm,
                                          zero_fill)
-    return _MultiNodeOptimizer(actual_optimizer, communicator, out,
+    return _MultiNodeOptimizer(actual_optimizer, original_comm, global_comm, out,
                                zero_fill)
