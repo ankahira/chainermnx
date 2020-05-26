@@ -9,16 +9,22 @@ from chainer.utils import type_check
 import chainerx
 
 
+import numpy as np
+import cupy as cp
+import time
+import torch
+
 class Concat(function_node.FunctionNode):
 
     """Concatenate multiple tensors towards specified axis."""
 
     # concat along the channel dimension by default
-    def __init__(self, axis=1):
+    def __init__(self, comm, axis=1):
         if not isinstance(axis, six.integer_types):
             raise TypeError('axis must be int')
 
         self.axis = axis
+        self.comm = comm
 
     def check_type_forward(self, in_types):
         type_check.expect(in_types.size() > 0)
@@ -42,6 +48,11 @@ class Concat(function_node.FunctionNode):
                 type_check.expect(in_types[0].shape[d] == in_types[i].shape[d])
 
     def forward(self, xs):
+        xp = chainer.backend.get_array_module(xs)
+        if xp is not np:
+            chainer.cuda.Stream.null.synchronize()
+        start = time.perf_counter()
+
         if (intel64.should_use_ideep('>=auto')
                 and intel64.inputs_all_ready(xs, (4,))):
             # iDeep implementation
@@ -49,7 +60,14 @@ class Concat(function_node.FunctionNode):
 
         # Generic implementation
         xp = backend.get_array_module(*xs)
-        return xp.concatenate(xs, self.axis),
+        xs = xp.concatenate(xs, self.axis)
+        if xp is not np:
+            chainer.cuda.Stream.null.synchronize()
+        stop = time.perf_counter()
+        if self.comm.rank == 0:
+            print("{:.10f}".format(stop-start), file=open("concat_forward.log", "a"))
+
+        return xs,
 
     def forward_chainerx(self, xs):
         return chainerx.concatenate(xs, self.axis),
@@ -63,6 +81,10 @@ class Concat(function_node.FunctionNode):
         return intel64.ideep.concat.Forward(xs_mdarray, axis),
 
     def backward(self, indexes, grad_outputs):
+        xp = chainer.backend.get_array_module(grad_outputs)
+        if xp is not np:
+            chainer.cuda.Stream.null.synchronize()
+        start = time.perf_counter()
         if len(self.inputs) == 1:
             return grad_outputs
 
@@ -70,11 +92,16 @@ class Concat(function_node.FunctionNode):
             [v.shape[self.axis] for v in self.inputs[:-1]]
         ).cumsum()
         gx, = grad_outputs
+        gxs = chainer.functions.split_axis(gx, sizes, self.axis)
+        if xp is not np:
+            chainer.cuda.Stream.null.synchronize()
+        stop = time.perf_counter()
+        if self.comm.rank == 0:
+            print("{:.10f}".format(stop-start),file=open("concat_backward.log", "a"))
+        return gxs
 
-        return chainer.functions.split_axis(gx, sizes, self.axis)
 
-
-def concat(xs, axis=1):
+def concat(xs, comm, axis=1):
     """Concatenates given variables along an axis.
 
     Args:
@@ -106,5 +133,5 @@ def concat(xs, axis=1):
                [ 8,  9, 10, 11,  2]])
 
     """
-    y, = Concat(axis).apply(xs)
+    y, = Concat(comm, axis).apply(xs)
     return y
