@@ -38,8 +38,8 @@ class FilterAllGather(chainer.Function, ABC):
         self.comm = comm
         self.original_comm = original_comm
         self.out = out
-        self.allreduce_time_file = open(os.path.join(self.out, "high_level_allreduce_times.log"), "a")
-        self.allgather_time_file = open(os.path.join(self.out, "high_level_allgather_times.log"), "a")
+        self.allreduce_time_file = open(os.path.join(self.out, "high_level_allreduce_times.log"), "a", buffering=1)
+        self.allgather_time_file = open(os.path.join(self.out, "high_level_allgather_times.log"), "a", buffering=1)
 
     def forward(self, inputs):
         # Do all gather in forward
