@@ -2,7 +2,7 @@ import os
 from abc import ABC
 import chainer
 import torch
-import cupy as cp
+import numpy as np
 
 import time
 
@@ -18,7 +18,8 @@ class AllReduce(chainer.Function, ABC):
         # xs = cp.empty(x.shape, dtype=cp.float32) # temporary receive buffer. Use when required
         # nccl_allreduce(x, self.comm)
 
-        self.comm.nccl_allreduce(x, self.comm)
+        # self.comm.nccl_allreduce(x, self.comm) # For GPU
+        self.comm.allreduce(x) # For CPU
         return x,
 
     def backward(self, inputs, grad_outputs):
@@ -56,7 +57,7 @@ class FilterAllGather(chainer.Function, ABC):
 
     def backward(self, inputs, grad_outputs):
         # Do allreduce in
-        gx = cp.stack(grad_outputs).sum(axis=0)
+        gx = np.stack(grad_outputs).sum(axis=0)
         # print("Grad outputs", grad_outputs[0].shape, len(grad_outputs))
         # gx, = grad_outputs
         torch.cuda.synchronize()

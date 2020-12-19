@@ -12,14 +12,13 @@ from chainer.utils import argument
 from chainer.utils import conv
 from chainer.utils import type_check
 import chainerx
-import cupy as cp
-import cupy
+import numpy as np
 import time
 import torch
 
-mempool = cupy.get_default_memory_pool()
-pinned_mempool = cupy.get_default_pinned_memory_pool()
-
+# mempool = cupy.get_default_memory_pool()
+# pinned_mempool = cupy.get_default_pinned_memory_pool()
+#
 
 if cuda.cudnn_enabled:
     _cudnn_version = cuda.cuda.cudnn.getVersion()  # type: ignore

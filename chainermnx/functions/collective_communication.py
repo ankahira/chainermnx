@@ -3,7 +3,6 @@ import chainer
 from chainer import backend
 import time
 import numpy
-
 import torch
 
 class AllGather(chainer.Function):

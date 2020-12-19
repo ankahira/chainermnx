@@ -1,6 +1,6 @@
 from abc import ABC
 from chainer import FunctionNode
-import cupy as cp
+import numpy as np
 import time
 import os
 import torch
@@ -39,11 +39,11 @@ class HaloExchange(FunctionNode, ABC):
             if self.pad != 0:
                 if self.comm.rank == 0:
                     npad = ((0, 0), (0, 0), (self.pad, 0), (0, 0))
-                    x = cp.pad(x, pad_width=npad, mode="constant")
+                    x = np.pad(x, pad_width=npad, mode="constant")
 
                 if self.comm.rank == 3:
                     npad = ((0, 0), (0, 0), (0, self.pad), (0, 0))
-                    x = cp.pad(x, pad_width=npad, mode="constant")
+                    x = np.pad(x, pad_width=npad, mode="constant")
 
             lower_halo_region = x[:, :, -self.halo_size:, :]
             upper_halo_region = x[:, :, :self.halo_size, :]
@@ -54,7 +54,7 @@ class HaloExchange(FunctionNode, ABC):
 
             if self.comm.rank > 0:
                 received_halo_region = self.comm.recv(self.comm.rank - 1, self.comm.rank * self.index)
-                x = cp.concatenate((received_halo_region, x), axis=-2)
+                x = np.concatenate((received_halo_region, x), axis=-2)
 
             # Exchange the upper region
             torch.cuda.synchronize()
@@ -63,7 +63,7 @@ class HaloExchange(FunctionNode, ABC):
 
             if self.comm.rank < 3:
                 received_halo_region = self.comm.recv(self.comm.rank + 1, self.comm.rank * self.index * 2)
-                x = cp.concatenate((x, received_halo_region), axis=-2)
+                x = np.concatenate((x, received_halo_region), axis=-2)
         torch.cuda.synchronize()
         stop = time.time()
         if self.original_comm.rank == 0:

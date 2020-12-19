@@ -101,6 +101,11 @@ def create_communicator(
             import NaiveCommunicator
         comm = NaiveCommunicator(mpi_comm=mpi_comm)
 
+    elif communicator_name == 'naive_channel':
+        from chainermnx.communicators.channel_naive_communicator \
+            import NaiveCommunicator
+        comm = NaiveCommunicator(mpi_comm=mpi_comm)
+
     elif communicator_name == 'flat':
         from chainermnx.communicators.flat_communicator \
             import FlatCommunicator

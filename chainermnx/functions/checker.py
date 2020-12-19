@@ -13,7 +13,6 @@ import chainer.functions as F
 import chainer.links as L
 from chainer.training import extensions
 from chainermnx.functions import concat
-import cupy as cp
 
 
 class Checker(FunctionNode, ABC):

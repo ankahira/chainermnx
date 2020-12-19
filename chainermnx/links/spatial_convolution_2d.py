@@ -5,7 +5,7 @@ from chainer import link
 from chainer import memory_layouts
 from chainer.utils import argument
 from chainer import variable
-import cupy as cp
+import numpy as np
 
 
 class SpatialConvolution2D(link.Link):
@@ -88,7 +88,7 @@ class SpatialConvolution2D(link.Link):
         if in_channels % self.groups != 0:
             raise ValueError('the number of input channels must be'
                              ' divisible by the number of groups')
-        cp.cuda.Device(self.comm.rank).use()
+        #cp.cuda.Device(self.comm.rank).use()
         W_shape = (self.out_channels, int(in_channels / self.groups), kh, kw)
         self.W.initialize(W_shape)
 

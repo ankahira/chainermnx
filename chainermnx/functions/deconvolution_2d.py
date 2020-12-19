@@ -1,4 +1,4 @@
-import numpy
+import numpy as np
 
 import chainer
 from chainer.backends import cuda
@@ -11,7 +11,7 @@ from chainer.utils import argument
 from chainer.utils import conv
 from chainer.utils import type_check
 import chainerx
-import cupy as cp
+
 
 if cuda.cudnn_enabled:
     _cudnn_version = cuda.cuda.cudnn.getVersion()  # type: ignore

@@ -2,7 +2,7 @@ import chainer
 import copy
 import time
 import os
-import cupy
+# import cupy
 
 import torch
 

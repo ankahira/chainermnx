@@ -1,6 +1,6 @@
 from abc import ABC
 from chainer import FunctionNode
-import cupy as cp
+import numpy as np
 import time
 
 
@@ -13,7 +13,7 @@ class Split(FunctionNode, ABC):
         if x.shape[1] < self.comm.size:
             return x,
         else:
-            x_list = cp.array_split(x, self.comm.size, axis=1)
+            x_list = np.array_split(x, self.comm.size, axis=1)
             x = x_list[self.comm.rank]
             return x,
 
@@ -23,9 +23,9 @@ class Split(FunctionNode, ABC):
         # Gather the gradients here
         gx, = grad_outputs
         gx_array = gx.array
-        # gxs = self.comm.allgather(gx_array)
-        gxs = self.comm.nccl_allgather(gx_array, self.comm)
-        gxs = cp.concatenate(gxs, axis=1)
+        gxs = self.comm.allgather(gx_array)
+        #gxs = self.comm.nccl_allgather(gx_array, self.comm) # Activate for GPUs
+        gxs = np.concatenate(gxs, axis=1)
         gx.array = gxs
         return gx,
 
